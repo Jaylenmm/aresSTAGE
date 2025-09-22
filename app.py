@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
+import threading
+import time
 from prediction_engine import PredictionEngine
 
 # Initialize Flask app
@@ -23,6 +25,73 @@ db = SQLAlchemy(app)
 
 # Initialize prediction engine
 prediction_engine = PredictionEngine()
+
+# Background scheduler for automatic data collection
+class DataScheduler:
+    def __init__(self):
+        self.running = False
+        self.thread = None
+    
+    def start(self):
+        """Start the background scheduler"""
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self._schedule_loop, daemon=True)
+            self.thread.start()
+    
+    def stop(self):
+        """Stop the background scheduler"""
+        self.running = False
+        if self.thread:
+            self.thread.join()
+    
+    def _schedule_loop(self):
+        """Main scheduling loop with intelligent refresh"""
+        last_collection = 0
+        collection_interval = 1800  # 30 minutes for more frequent updates
+        
+        while self.running:
+            current_time = time.time()
+            
+            # Collect data every 30 minutes
+            if current_time - last_collection >= collection_interval:
+                try:
+                    from sports_collector import SportsDataCollector
+                    
+                    collector = SportsDataCollector()
+                    games = collector.collect_all_games()
+                    
+                    # Also clean up old predictions
+                    self._cleanup_old_predictions()
+                    
+                    last_collection = current_time
+                    
+                except Exception as e:
+                    pass
+            
+            # Sleep for 5 minutes before checking again
+            time.sleep(300)
+    
+    def _cleanup_old_predictions(self):
+        """Clean up old predictions automatically"""
+        try:
+            with app.app_context():
+                from datetime import datetime, timedelta
+                
+                # Remove predictions older than 7 days
+                cutoff_date = datetime.now() - timedelta(days=7)
+                old_predictions = Prediction.query.filter(Prediction.created_at < cutoff_date).all()
+                
+                for prediction in old_predictions:
+                    db.session.delete(prediction)
+                
+                db.session.commit()
+                
+        except Exception as e:
+            pass
+
+# Initialize scheduler
+data_scheduler = DataScheduler()
 
 # Database utility functions
 def add_game(home_team, away_team, date, sport, spread=None, total=None, status='upcoming', home_score=0, away_score=0):
@@ -127,26 +196,26 @@ class Prediction(db.Model):
 @app.route('/')
 def dashboard():
     """Main dashboard page"""
-    games = Game.query.order_by(Game.date.desc()).limit(10).all()
+    games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).order_by(Game.date.asc()).limit(10).all()
     predictions = Prediction.query.order_by(Prediction.created_at.desc()).limit(5).all()
     return render_template('dashboard.html', games=games, predictions=predictions)
 
 @app.route('/games')
 def games():
     """Games listing page"""
-    games = Game.query.order_by(Game.date.desc()).all()
+    games = Game.query.filter(Game.status.in_(['upcoming', 'live', 'completed'])).order_by(Game.date.desc()).limit(50).all()
     return render_template('games.html', games=games)
 
 @app.route('/predictions')
 def predictions():
     """Predictions page"""
-    predictions = Prediction.query.order_by(Prediction.created_at.desc()).all()
+    predictions = Prediction.query.order_by(Prediction.created_at.desc()).limit(100).all()
     return render_template('predictions.html', predictions=predictions)
 
 @app.route('/api/games', methods=['GET'])
 def api_games():
     """API endpoint for games data"""
-    games = Game.query.order_by(Game.date.desc()).all()
+    games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).order_by(Game.date.asc()).limit(20).all()
     return jsonify([game.to_dict() for game in games])
 
 @app.route('/api/games/upcoming', methods=['GET'])
@@ -175,21 +244,51 @@ def api_predictions():
 
 @app.route('/collect-data', methods=['POST'])
 def collect_sports_data():
-    """Trigger sports data collection"""
+    """Trigger sports data collection with automatic cleanup"""
     try:
         from sports_collector import SportsDataCollector
+        
+        # Force a complete refresh
         collector = SportsDataCollector()
         games = collector.collect_all_games()
         
+        # Get updated game count
+        with app.app_context():
+            total_games = Game.query.count()
+            upcoming_games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).count()
+        
         return jsonify({
             'success': True,
-            'message': f'Successfully collected {len(games)} games',
-            'games_count': len(games)
+            'message': f'Successfully refreshed {len(games)} games',
+            'games_count': len(games),
+            'total_games': total_games,
+            'upcoming_games': upcoming_games
         })
     except Exception as e:
         return jsonify({
             'success': False,
             'message': f'Error collecting data: {str(e)}'
+        }), 500
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for monitoring"""
+    try:
+        with app.app_context():
+            total_games = Game.query.count()
+            recent_games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).count()
+            latest_collection = Game.query.order_by(Game.created_at.desc()).first()
+            
+        return jsonify({
+            'status': 'healthy',
+            'total_games': total_games,
+            'active_games': recent_games,
+            'last_update': latest_collection.created_at.isoformat() if latest_collection else None
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
         }), 500
 
 @app.route('/predict', methods=['POST'])
@@ -261,7 +360,16 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     
-    # Run the app
-    port = int(os.getenv('PORT', 5000))
-    debug = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
-    app.run(debug=debug, host='0.0.0.0', port=port)
+    # Start background scheduler
+    data_scheduler.start()
+    
+    try:
+        # Run the app
+        port = int(os.getenv('PORT', 5000))
+        debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+        app.run(debug=debug, host='0.0.0.0', port=port)
+    except KeyboardInterrupt:
+        data_scheduler.stop()
+    except Exception as e:
+        data_scheduler.stop()
+        raise

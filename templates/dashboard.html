@@ -169,5 +169,26 @@ function collectData() {
         button.disabled = false;
     });
 }
+
+// Auto-refresh dashboard every 5 minutes
+setInterval(function() {
+    // Check if we need to refresh (only if no user interaction in last 2 minutes)
+    const lastActivity = localStorage.getItem('lastActivity') || 0;
+    const now = Date.now();
+    
+    if (now - lastActivity > 120000) { // 2 minutes
+        console.log('🔄 Auto-refreshing dashboard...');
+        location.reload();
+    }
+}, 300000); // 5 minutes
+
+// Track user activity
+document.addEventListener('click', function() {
+    localStorage.setItem('lastActivity', Date.now());
+});
+
+document.addEventListener('keypress', function() {
+    localStorage.setItem('lastActivity', Date.now());
+});
 </script>
 {% endblock %}

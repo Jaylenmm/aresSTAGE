@@ -6,8 +6,15 @@
 <div class="px-4 py-6 sm:px-0">
     <!-- Header -->
     <div class="mb-8">
-        <h1 class="text-3xl font-bold text-white">Games</h1>
-        <p class="mt-2 text-gray-400">View all upcoming and completed games</p>
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-white">Games</h1>
+                <p class="mt-2 text-gray-400">View all upcoming and completed games</p>
+            </div>
+            <button onclick="refreshGames()" class="btn-primary mobile-full-width sm:w-auto">
+                🔄 Refresh Games Data
+            </button>
+        </div>
     </div>
 
     <!-- Search Bar -->
@@ -172,6 +179,54 @@ function filterGames() {
 
 // Initialize
 filterGames();
+
+// Refresh games data
+function refreshGames() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    // Show loading state
+    button.innerHTML = '🔄 Refreshing...';
+    button.disabled = true;
+    
+    fetch('/collect-data', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            button.innerHTML = '✅ Refreshed!';
+            button.style.backgroundColor = '#10b981';
+            
+            // Reload the page after a short delay to show new data
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } else {
+            button.innerHTML = '❌ Error';
+            button.style.backgroundColor = '#ef4444';
+            alert(`Error: ${data.message}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        button.innerHTML = '❌ Error';
+        button.style.backgroundColor = '#ef4444';
+        alert('Error refreshing data. Please try again.');
+    })
+    .finally(() => {
+        // Reset button after 3 seconds
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+            button.style.backgroundColor = '';
+        }, 3000);
+    });
+}
 </script>
 
 <style>

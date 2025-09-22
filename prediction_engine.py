@@ -197,19 +197,9 @@ class PredictionEngine:
         }
     
     def _calculate_player_confidence_adjustment(self, home_analysis: Dict, away_analysis: Dict) -> float:
-        """Calculate confidence adjustment based on key player availability"""
-        adjustment = 0.0
-        
-        # Check for key player injuries
-        for player in home_analysis['key_players']:
-            if player['injury_status']['status'] in ['Out', 'Doubtful']:
-                adjustment -= 5  # Reduce confidence for key injuries
-        
-        for player in away_analysis['key_players']:
-            if player['injury_status']['status'] in ['Out', 'Doubtful']:
-                adjustment += 5  # Increase confidence when opponent has key injuries
-        
-        return adjustment
+        """Calculate confidence adjustment - simplified for production"""
+        # No player data available, return neutral adjustment
+        return 0.0
     
     def _generate_spread_reasoning(self, home_team: str, away_team: str, predicted_spread: float, 
                                  home_advantage: float, strength_gap: float, 
@@ -225,27 +215,7 @@ class PredictionEngine:
         
         reasoning_parts.append(f"Home field advantage adds {home_advantage} points.")
         
-        # Add player insights
-        key_injuries = []
-        for player in home_analysis['key_players']:
-            if player['injury_status']['status'] in ['Out', 'Doubtful']:
-                key_injuries.append(f"{player['name']} ({player['injury_status']['status']})")
-        
-        for player in away_analysis['key_players']:
-            if player['injury_status']['status'] in ['Out', 'Doubtful']:
-                key_injuries.append(f"{player['name']} ({player['injury_status']['status']})")
-        
-        if key_injuries:
-            reasoning_parts.append(f"Key injuries: {', '.join(key_injuries[:2])}.")
-        
-        # Add form insights
-        home_form = [p['recent_form']['trend'] for p in home_analysis['key_players']]
-        away_form = [p['recent_form']['trend'] for p in away_analysis['key_players']]
-        
-        if 'improving' in home_form:
-            reasoning_parts.append(f"{home_team} key players showing improving form.")
-        if 'declining' in away_form:
-            reasoning_parts.append(f"{away_team} key players showing declining form.")
+        # Player insights removed for production - would need real API data
         
         # Strength assessment
         if strength_gap > 0.3:
@@ -266,31 +236,3 @@ class PredictionEngine:
             "If you have a gambling problem, please seek help from professional resources."
         )
 
-# Example usage and testing
-if __name__ == '__main__':
-    engine = PredictionEngine()
-    
-    # Test predictions
-    test_games = [
-        ('Kansas City Chiefs', 'Buffalo Bills', 'football'),
-        ('Los Angeles Lakers', 'Boston Celtics', 'basketball'),
-        ('New York Yankees', 'Boston Red Sox', 'baseball')
-    ]
-    
-    print("🎯 Ares AI Prediction Engine - Test Results")
-    print("=" * 60)
-    
-    for home, away, sport in test_games:
-        prediction = engine.make_full_prediction(home, away, sport)
-        
-        print(f"\n🏆 {sport.title()}: {home} vs {away}")
-        print(f"📊 Predicted Spread: {prediction['spread_prediction']['predicted_spread']} "
-              f"({prediction['spread_prediction']['confidence']}% confidence)")
-        print(f"📈 Predicted Total: {prediction['total_prediction']['predicted_total']} "
-              f"({prediction['total_prediction']['confidence']}% confidence)")
-        print(f"🎯 Overall Confidence: {prediction['overall_confidence']}%")
-        print(f"💭 Spread Reasoning: {prediction['spread_prediction']['reasoning']}")
-        print(f"💭 Total Reasoning: {prediction['total_prediction']['reasoning']}")
-        print("-" * 60)
-    
-    print(f"\n{prediction['disclaimer']}")
