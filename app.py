@@ -110,11 +110,16 @@ def ensure_game_schema():
                 ddl_statements.append("ALTER TABLE game ADD COLUMN bookmaker VARCHAR(100)")
             if 'odds_last_updated' not in columns:
                 ddl_statements.append("ALTER TABLE game ADD COLUMN odds_last_updated TIMESTAMP")
-            for ddl in ddl_statements:
+            if ddl_statements:
                 try:
-                    engine.execute(text(ddl))
+                    with engine.begin() as conn:
+                        for ddl in ddl_statements:
+                            try:
+                                conn.execute(text(ddl))
+                            except Exception:
+                                continue
                 except Exception:
-                    continue
+                    pass
     except Exception:
         pass
 
