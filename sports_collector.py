@@ -11,6 +11,7 @@ import time
 import random
 import hashlib
 import pytz
+import os
 from app import app, db, Game
 from providers.sportsdata_client import SportsDataIOClient
 from providers.odds_client import OddsClient
@@ -31,6 +32,11 @@ class SportsDataCollector:
         self.cache_ttl = 15 * 60  # 15 minutes
         self.sdio = SportsDataIOClient()
         self.odds = OddsClient()
+        # Lookahead days for schedules (env override)
+        try:
+            self.lookahead_days = int(os.getenv('SDIO_LOOKAHEAD_DAYS', '7'))
+        except Exception:
+            self.lookahead_days = 7
     
     def get_nfl_week(self, date=None):
         """Calculate current NFL week based on date (Tuesday-Monday cycle)"""
@@ -60,38 +66,38 @@ class SportsDataCollector:
     def collect_nfl_games(self):
         """Collect NFL games from SportsDataIO"""
         try:
-            return self.sdio.fetch_upcoming_games('nfl', days_ahead=2)
+            return self.sdio.fetch_upcoming_games('nfl', days_ahead=self.lookahead_days)
         except Exception:
             return []
     
     def collect_nba_games(self):
         """Collect NBA games from SportsDataIO"""
         try:
-            return self.sdio.fetch_upcoming_games('nba', days_ahead=2)
+            return self.sdio.fetch_upcoming_games('nba', days_ahead=self.lookahead_days)
         except Exception:
             return []
 
     def collect_mlb_games(self):
         try:
-            return self.sdio.fetch_upcoming_games('mlb', days_ahead=2)
+            return self.sdio.fetch_upcoming_games('mlb', days_ahead=self.lookahead_days)
         except Exception:
             return []
 
     def collect_cfb_games(self):
         try:
-            return self.sdio.fetch_upcoming_games('cfb', days_ahead=2)
+            return self.sdio.fetch_upcoming_games('cfb', days_ahead=self.lookahead_days)
         except Exception:
             return []
 
     def collect_soccer_games(self):
         try:
-            return self.sdio.fetch_upcoming_games('soccer', days_ahead=2)
+            return self.sdio.fetch_upcoming_games('soccer', days_ahead=self.lookahead_days)
         except Exception:
             return []
 
     def collect_golf_events(self):
         try:
-            return self.sdio.fetch_upcoming_games('golf', days_ahead=2)
+            return self.sdio.fetch_upcoming_games('golf', days_ahead=self.lookahead_days)
         except Exception:
             return []
     
@@ -184,22 +190,34 @@ class SportsDataCollector:
         all_games = []
         
         # NFL
-        all_games.extend(self.collect_nfl_games())
+        nfl = self.collect_nfl_games()
+        print(f"NFL schedule fetched: {len(nfl)} games (lookahead {self.lookahead_days}d)")
+        all_games.extend(nfl)
         time.sleep(0.5)
         # NBA
-        all_games.extend(self.collect_nba_games())
+        nba = self.collect_nba_games()
+        print(f"NBA schedule fetched: {len(nba)} games (lookahead {self.lookahead_days}d)")
+        all_games.extend(nba)
         time.sleep(0.5)
         # MLB
-        all_games.extend(self.collect_mlb_games())
+        mlb = self.collect_mlb_games()
+        print(f"MLB schedule fetched: {len(mlb)} games (lookahead {self.lookahead_days}d)")
+        all_games.extend(mlb)
         time.sleep(0.5)
         # CFB
-        all_games.extend(self.collect_cfb_games())
+        cfb = self.collect_cfb_games()
+        print(f"CFB schedule fetched: {len(cfb)} games (lookahead {self.lookahead_days}d)")
+        all_games.extend(cfb)
         time.sleep(0.5)
         # Soccer (best-effort)
-        all_games.extend(self.collect_soccer_games())
+        soccer = self.collect_soccer_games()
+        print(f"Soccer schedule fetched: {len(soccer)} events (lookahead {self.lookahead_days}d)")
+        all_games.extend(soccer)
         time.sleep(0.5)
         # Golf (tournaments as events)
-        all_games.extend(self.collect_golf_events())
+        golf = self.collect_golf_events()
+        print(f"Golf events fetched: {len(golf)} (lookahead {self.lookahead_days}d)")
+        all_games.extend(golf)
         
         # Save to database
         if all_games:
@@ -207,7 +225,8 @@ class SportsDataCollector:
         
         # Also fetch odds to enrich current and upcoming games
         try:
-            self._update_odds_for_upcoming()
+            updated = self._update_odds_for_upcoming()
+            print(f"Odds updated on {updated} games")
         except Exception:
             pass
         return all_games
@@ -218,12 +237,13 @@ class SportsDataCollector:
             # Query upcoming and live games only
             upcoming_games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).all()
             if not upcoming_games:
-                return
+                return 0
             # Fetch odds per sport and build a quick lookup
             sports = set(g.sport.lower() for g in upcoming_games)
             odds_by_key = {}
             for sport in sports:
                 odds_list = self.odds.fetch_odds_for_sport(sport)
+                print(f"Odds fetched for {sport}: {len(odds_list)} events")
                 for o in odds_list:
                     key = (o['home_team'], o['away_team'], sport)
                     odds_by_key[key] = o
@@ -246,6 +266,7 @@ class SportsDataCollector:
                     updated += 1
             if updated:
                 db.session.commit()
+            return updated
     
     def _get_realistic_spread(self, home_team, away_team, sport):
         """Generate realistic spreads based on team strength"""

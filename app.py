@@ -329,6 +329,32 @@ def health_check():
             'error': str(e)
         }), 500
 
+@app.route('/api/diagnostics/providers', methods=['GET'])
+def provider_diagnostics():
+    """Quick diagnostics to verify provider responses and DB counts"""
+    try:
+        from sports_collector import SportsDataCollector
+        col = SportsDataCollector()
+        summary = {}
+        summary['lookahead_days'] = getattr(col, 'lookahead_days', None)
+        # Fetch without saving
+        nfl = col.collect_nfl_games()
+        nba = col.collect_nba_games()
+        mlb = col.collect_mlb_games()
+        cfb = col.collect_cfb_games()
+        soccer = col.collect_soccer_games()
+        golf = col.collect_golf_events()
+        summary['schedules'] = {
+            'nfl': len(nfl), 'nba': len(nba), 'mlb': len(mlb), 'cfb': len(cfb), 'soccer': len(soccer), 'golf': len(golf)
+        }
+        # DB counts
+        total_games = Game.query.count()
+        upcoming = Game.query.filter(Game.status.in_(['upcoming','live'])).count()
+        summary['db'] = {'total_games': total_games, 'upcoming_or_live': upcoming}
+        return jsonify({'success': True, 'summary': summary})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/predict', methods=['POST'])
 def make_prediction():
     """Make a prediction for a game"""
