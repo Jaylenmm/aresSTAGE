@@ -12,6 +12,8 @@ import random
 import hashlib
 import pytz
 from app import app, db, Game
+from providers.sportsdata_client import SportsDataIOClient
+from providers.odds_client import OddsClient
 
 class SportsDataCollector:
     def __init__(self):
@@ -27,6 +29,8 @@ class SportsDataCollector:
         # Simple cache for API responses (15 minute TTL)
         self.cache = {}
         self.cache_ttl = 15 * 60  # 15 minutes
+        self.sdio = SportsDataIOClient()
+        self.odds = OddsClient()
     
     def get_nfl_week(self, date=None):
         """Calculate current NFL week based on date (Tuesday-Monday cycle)"""
@@ -54,70 +58,42 @@ class SportsDataCollector:
         return week_start, week_end
     
     def collect_nfl_games(self):
-        """Collect NFL games from ESPN API with proper date/time parsing"""
+        """Collect NFL games from SportsDataIO"""
         try:
-            # ESPN NFL API endpoint
-            url = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
-            
-            response = self.session.get(url, timeout=10)
-            response.raise_for_status()
-            
-            data = response.json()
-            games = []
-            
-            for event in data.get('events', []):
-                try:
-                    # Extract game info
-                    home_team = event['competitions'][0]['competitors'][0]['team']['displayName']
-                    away_team = event['competitions'][0]['competitors'][1]['team']['displayName']
-                    
-                    # Parse date from ESPN API - use actual date/time from API
-                    date_str = event['date']
-                    game_date = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                    
-                    # Convert to EST for display
-                    game_date = game_date.astimezone(self.est_tz)
-                    
-                    # Get scores if available
-                    home_score = int(event['competitions'][0]['competitors'][0].get('score', 0))
-                    away_score = int(event['competitions'][0]['competitors'][1].get('score', 0))
-                    
-                    # Determine status
-                    status = event['status']['type']['name'].lower()
-                    if status == 'final':
-                        status = 'completed'
-                    elif status == 'in':
-                        status = 'live'
-                    else:
-                        status = 'upcoming'
-                    
-                    # Add realistic betting data for NFL games
-                    spread = self._get_realistic_spread(home_team, away_team, 'football')
-                    total = self._get_realistic_total('football')
-                    
-                    games.append({
-                        'home_team': home_team,
-                        'away_team': away_team,
-                        'date': game_date,
-                        'sport': 'football',
-                        'status': status,
-                        'home_score': home_score,
-                        'away_score': away_score,
-                        'spread': spread,
-                        'total': total
-                    })
-                    
-                except (KeyError, ValueError, IndexError) as e:
-                    continue
-            
-            return games
-            
-        except Exception as e:
+            return self.sdio.fetch_upcoming_games('nfl', days_ahead=2)
+        except Exception:
             return []
     
     def collect_nba_games(self):
-        """Collect NBA games - simplified for production"""
-        return []
+        """Collect NBA games from SportsDataIO"""
+        try:
+            return self.sdio.fetch_upcoming_games('nba', days_ahead=2)
+        except Exception:
+            return []
+
+    def collect_mlb_games(self):
+        try:
+            return self.sdio.fetch_upcoming_games('mlb', days_ahead=2)
+        except Exception:
+            return []
+
+    def collect_cfb_games(self):
+        try:
+            return self.sdio.fetch_upcoming_games('cfb', days_ahead=2)
+        except Exception:
+            return []
+
+    def collect_soccer_games(self):
+        try:
+            return self.sdio.fetch_upcoming_games('soccer', days_ahead=2)
+        except Exception:
+            return []
+
+    def collect_golf_events(self):
+        try:
+            return self.sdio.fetch_upcoming_games('golf', days_ahead=2)
+        except Exception:
+            return []
     
     def scrape_espn_games(self):
         """Backup web scraping method - not implemented"""
@@ -153,6 +129,15 @@ class SportsDataCollector:
                         existing_game.away_score = game_data['away_score']
                         existing_game.spread = game_data.get('spread')
                         existing_game.total = game_data.get('total')
+                        # Update odds fields if provided
+                        if game_data.get('home_moneyline') is not None:
+                            existing_game.home_moneyline = game_data.get('home_moneyline')
+                        if game_data.get('away_moneyline') is not None:
+                            existing_game.away_moneyline = game_data.get('away_moneyline')
+                        if game_data.get('bookmaker'):
+                            existing_game.bookmaker = game_data.get('bookmaker')
+                        if game_data.get('odds_last_updated'):
+                            existing_game.odds_last_updated = game_data.get('odds_last_updated')
                         updated_count += 1
                 
                 db.session.commit()
@@ -198,22 +183,69 @@ class SportsDataCollector:
         """Main method to collect all sports data"""
         all_games = []
         
-        # Get NFL games
-        nfl_games = self.collect_nfl_games()
-        all_games.extend(nfl_games)
-        
-        # Add delay between requests
-        time.sleep(1)
-        
-        # Get NBA games
-        nba_games = self.collect_nba_games()
-        all_games.extend(nba_games)
+        # NFL
+        all_games.extend(self.collect_nfl_games())
+        time.sleep(0.5)
+        # NBA
+        all_games.extend(self.collect_nba_games())
+        time.sleep(0.5)
+        # MLB
+        all_games.extend(self.collect_mlb_games())
+        time.sleep(0.5)
+        # CFB
+        all_games.extend(self.collect_cfb_games())
+        time.sleep(0.5)
+        # Soccer (best-effort)
+        all_games.extend(self.collect_soccer_games())
+        time.sleep(0.5)
+        # Golf (tournaments as events)
+        all_games.extend(self.collect_golf_events())
         
         # Save to database
         if all_games:
             self.save_games_to_db(all_games)
         
+        # Also fetch odds to enrich current and upcoming games
+        try:
+            self._update_odds_for_upcoming()
+        except Exception:
+            pass
         return all_games
+
+    def _update_odds_for_upcoming(self):
+        """Fetch odds from The Odds API and update matching games."""
+        with app.app_context():
+            # Query upcoming and live games only
+            upcoming_games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).all()
+            if not upcoming_games:
+                return
+            # Fetch odds per sport and build a quick lookup
+            sports = set(g.sport.lower() for g in upcoming_games)
+            odds_by_key = {}
+            for sport in sports:
+                odds_list = self.odds.fetch_odds_for_sport(sport)
+                for o in odds_list:
+                    key = (o['home_team'], o['away_team'], sport)
+                    odds_by_key[key] = o
+            # Update games
+            updated = 0
+            for g in upcoming_games:
+                key = (g.home_team, g.away_team, g.sport.lower())
+                match = odds_by_key.get(key)
+                if not match:
+                    # try reversed order if provider orders teams differently
+                    key_rev = (g.away_team, g.home_team, g.sport.lower())
+                    match = odds_by_key.get(key_rev)
+                if match:
+                    g.spread = match.get('spread', g.spread)
+                    g.total = match.get('total', g.total)
+                    g.home_moneyline = match.get('home_moneyline', g.home_moneyline)
+                    g.away_moneyline = match.get('away_moneyline', g.away_moneyline)
+                    g.bookmaker = match.get('bookmaker', g.bookmaker)
+                    g.odds_last_updated = match.get('last_update') or g.odds_last_updated
+                    updated += 1
+            if updated:
+                db.session.commit()
     
     def _get_realistic_spread(self, home_team, away_team, sport):
         """Generate realistic spreads based on team strength"""

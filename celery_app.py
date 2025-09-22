@@ -19,13 +19,17 @@ celery_app.conf.update(
     enable_utc=True,
     # Schedule tasks
     beat_schedule={
-        'collect-sports-data-every-hour': {
+        'collect-schedules-every-30min': {
             'task': 'celery_app.collect_sports_data_task',
-            'schedule': 3600.0,  # Every hour
+            'schedule': 1800.0,
+        },
+        'refresh-odds-every-5min': {
+            'task': 'celery_app.refresh_odds_task',
+            'schedule': 300.0,
         },
         'collect-sports-data-week-transition': {
             'task': 'celery_app.collect_sports_data_task',
-            'schedule': 86400.0,  # Daily check for week transitions
+            'schedule': 86400.0,
         },
     },
 )
@@ -78,3 +82,14 @@ def check_week_transition():
             'error': str(e),
             'message': f'Week transition check failed: {str(e)}'
         }
+
+@celery_app.task
+def refresh_odds_task():
+    """Background task to refresh odds more frequently"""
+    try:
+        from sports_collector import SportsDataCollector
+        collector = SportsDataCollector()
+        collector._update_odds_for_upcoming()
+        return {'success': True, 'message': 'Odds refreshed'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}

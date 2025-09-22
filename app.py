@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 import threading
 import time
+from sqlalchemy import inspect, text
 from prediction_engine import PredictionEngine
 
 # Initialize Flask app
@@ -90,8 +91,32 @@ class DataScheduler:
         except Exception as e:
             pass
 
-# Initialize scheduler
-data_scheduler = DataScheduler()
+USE_THREAD_SCHEDULER = os.getenv('USE_THREAD_SCHEDULER', 'false').lower() == 'true'
+data_scheduler = DataScheduler() if USE_THREAD_SCHEDULER else None
+
+def ensure_game_schema():
+    """Ensure new odds columns exist on Game table (simple runtime migration)."""
+    try:
+        with app.app_context():
+            engine = db.engine
+            inspector = inspect(engine)
+            columns = {col['name'] for col in inspector.get_columns('game')}
+            ddl_statements = []
+            if 'home_moneyline' not in columns:
+                ddl_statements.append("ALTER TABLE game ADD COLUMN home_moneyline FLOAT")
+            if 'away_moneyline' not in columns:
+                ddl_statements.append("ALTER TABLE game ADD COLUMN away_moneyline FLOAT")
+            if 'bookmaker' not in columns:
+                ddl_statements.append("ALTER TABLE game ADD COLUMN bookmaker VARCHAR(100)")
+            if 'odds_last_updated' not in columns:
+                ddl_statements.append("ALTER TABLE game ADD COLUMN odds_last_updated TIMESTAMP")
+            for ddl in ddl_statements:
+                try:
+                    engine.execute(text(ddl))
+                except Exception:
+                    continue
+    except Exception:
+        pass
 
 # Database utility functions
 def add_game(home_team, away_team, date, sport, spread=None, total=None, status='upcoming', home_score=0, away_score=0):
@@ -155,6 +180,10 @@ class Game(db.Model):
     away_score = db.Column(db.Integer, default=0)
     spread = db.Column(db.Float, nullable=True)  # Point spread (negative for home team favorite)
     total = db.Column(db.Float, nullable=True)   # Over/under total points
+    home_moneyline = db.Column(db.Float, nullable=True)
+    away_moneyline = db.Column(db.Float, nullable=True)
+    bookmaker = db.Column(db.String(100), nullable=True)
+    odds_last_updated = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationship to predictions
@@ -176,6 +205,10 @@ class Game(db.Model):
             'away_score': self.away_score,
             'spread': self.spread,
             'total': self.total,
+            'home_moneyline': self.home_moneyline,
+            'away_moneyline': self.away_moneyline,
+            'bookmaker': self.bookmaker,
+            'odds_last_updated': self.odds_last_updated.isoformat() if self.odds_last_updated else None,
             'created_at': self.created_at.isoformat()
         }
 
@@ -359,9 +392,11 @@ if __name__ == '__main__':
     # Create database tables
     with app.app_context():
         db.create_all()
+        ensure_game_schema()
     
-    # Start background scheduler
-    data_scheduler.start()
+    # Start background scheduler if enabled
+    if data_scheduler:
+        data_scheduler.start()
     
     try:
         # Run the app
@@ -369,7 +404,9 @@ if __name__ == '__main__':
         debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
         app.run(debug=debug, host='0.0.0.0', port=port)
     except KeyboardInterrupt:
-        data_scheduler.stop()
+        if data_scheduler:
+            data_scheduler.stop()
     except Exception as e:
-        data_scheduler.stop()
+        if data_scheduler:
+            data_scheduler.stop()
         raise

@@ -21,3 +21,4 @@ psycopg2-binary==2.9.7
 # Caching and performance
 redis==5.0.1
 celery==5.3.4
+python-dotenv==1.0.1

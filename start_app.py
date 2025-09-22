@@ -5,7 +5,7 @@ Startup script for Ares AI with automatic data collection
 
 import os
 import sys
-from app import app, data_scheduler
+from app import app, data_scheduler, ensure_game_schema
 
 def main():
     """Start the Ares AI application with background services"""
@@ -14,9 +14,11 @@ def main():
     with app.app_context():
         from app import db
         db.create_all()
+        ensure_game_schema()
     
     # Start background scheduler
-    data_scheduler.start()
+    if data_scheduler:
+        data_scheduler.start()
     
     # Get configuration
     port = int(os.getenv('PORT', 5000))
@@ -26,9 +28,11 @@ def main():
         # Run the Flask app
         app.run(debug=debug, host='0.0.0.0', port=port)
     except KeyboardInterrupt:
-        data_scheduler.stop()
+        if data_scheduler:
+            data_scheduler.stop()
     except Exception as e:
-        data_scheduler.stop()
+        if data_scheduler:
+            data_scheduler.stop()
         sys.exit(1)
 
 if __name__ == '__main__':
