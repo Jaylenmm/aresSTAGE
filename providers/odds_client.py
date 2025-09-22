@@ -11,6 +11,7 @@ import os
 import requests
 from datetime import datetime
 from typing import Dict, List, Optional
+import pytz
 
 
 class OddsClient:
@@ -34,6 +35,7 @@ class OddsClient:
         self.timeout_seconds = 15
         self.regions = os.getenv('ODDS_REGIONS', 'us,us2')
         self.bookmakers_filter = self._parse_list(os.getenv('ODDS_BOOKMAKERS'))
+        self.est_tz = pytz.timezone('US/Eastern')
 
     def _parse_list(self, value: Optional[str]) -> Optional[List[str]]:
         if not value:
@@ -117,7 +119,11 @@ class OddsClient:
         if not value:
             return None
         try:
-            return datetime.fromisoformat(value.replace('Z', '+00:00')).replace(tzinfo=None)
+            parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=pytz.UTC)
+            est_dt = parsed.astimezone(self.est_tz)
+            return est_dt.replace(tzinfo=None)
         except Exception:
             return None
 

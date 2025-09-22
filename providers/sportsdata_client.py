@@ -14,6 +14,7 @@ import os
 import requests
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+import pytz
 
 
 class SportsDataIOClient:
@@ -31,6 +32,7 @@ class SportsDataIOClient:
     def __init__(self):
         self.session = requests.Session()
         self.timeout_seconds = 15
+        self.est_tz = pytz.timezone('US/Eastern')
 
     def _get_key_for_sport(self, sport: str) -> Optional[str]:
         fallback = os.getenv('SPORTSDATAIO_API_KEY')
@@ -128,9 +130,12 @@ class SportsDataIOClient:
         if not value:
             return None
         try:
-            # SportsDataIO returns ISO 8601; parse to naive UTC
-            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-            return dt.replace(tzinfo=None)
+            # Parse to aware datetime (assume UTC if tz missing), then convert to US/Eastern and return naive
+            parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=pytz.UTC)
+            est_dt = parsed.astimezone(self.est_tz)
+            return est_dt.replace(tzinfo=None)
         except Exception:
             return None
 
