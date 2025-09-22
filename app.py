@@ -341,17 +341,31 @@ def provider_diagnostics():
         nfl = col.collect_nfl_games()
         nba = col.collect_nba_games()
         mlb = col.collect_mlb_games()
+        nhl = col.collect_nhl_games()
         cfb = col.collect_cfb_games()
         soccer = col.collect_soccer_games()
         golf = col.collect_golf_events()
         summary['schedules'] = {
-            'nfl': len(nfl), 'nba': len(nba), 'mlb': len(mlb), 'cfb': len(cfb), 'soccer': len(soccer), 'golf': len(golf)
+            'nfl': len(nfl), 'nba': len(nba), 'mlb': len(mlb), 'nhl': len(nhl), 'cfb': len(cfb), 'soccer': len(soccer), 'golf': len(golf)
         }
         # DB counts
         total_games = Game.query.count()
         upcoming = Game.query.filter(Game.status.in_(['upcoming','live'])).count()
         summary['db'] = {'total_games': total_games, 'upcoming_or_live': upcoming}
         return jsonify({'success': True, 'summary': summary})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/seed_from_odds', methods=['POST'])
+def admin_seed_from_odds():
+    """Force seeding upcoming games from odds events (real provider data)."""
+    try:
+        from sports_collector import SportsDataCollector
+        col = SportsDataCollector()
+        created = col._build_games_from_odds()
+        if created:
+            col.save_games_to_db(created)
+        return jsonify({'success': True, 'created': len(created)})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

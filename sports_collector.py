@@ -83,6 +83,12 @@ class SportsDataCollector:
         except Exception:
             return []
 
+    def collect_nhl_games(self):
+        try:
+            return self.sdio.fetch_upcoming_games('nhl', days_ahead=self.lookahead_days)
+        except Exception:
+            return []
+
     def collect_cfb_games(self):
         try:
             return self.sdio.fetch_upcoming_games('cfb', days_ahead=self.lookahead_days)
@@ -204,6 +210,11 @@ class SportsDataCollector:
         print(f"MLB schedule fetched: {len(mlb)} games (lookahead {self.lookahead_days}d)")
         all_games.extend(mlb)
         time.sleep(0.5)
+        # NHL
+        nhl = self.collect_nhl_games()
+        print(f"NHL schedule fetched: {len(nhl)} games (lookahead {self.lookahead_days}d)")
+        all_games.extend(nhl)
+        time.sleep(0.5)
         # CFB
         cfb = self.collect_cfb_games()
         print(f"CFB schedule fetched: {len(cfb)} games (lookahead {self.lookahead_days}d)")
@@ -282,7 +293,7 @@ class SportsDataCollector:
         """When schedules are empty, create upcoming games from odds events for supported sports."""
         created = []
         now = datetime.utcnow()
-        for sport in ['nfl', 'nba', 'mlb', 'cfb']:
+        for sport in ['nfl', 'nba', 'mlb', 'nhl', 'cfb']:
             odds_list = self.odds.fetch_odds_for_sport(sport)
             print(f"Fallback odds events for {sport}: {len(odds_list)}")
             for ev in odds_list:

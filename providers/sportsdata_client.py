@@ -22,6 +22,7 @@ class SportsDataIOClient:
         'nba': 'https://api.sportsdata.io/v3/nba/scores/json',
         'mlb': 'https://api.sportsdata.io/v3/mlb/scores/json',
         'cfb': 'https://api.sportsdata.io/v3/cfb/scores/json',
+        'nhl': 'https://api.sportsdata.io/v3/nhl/scores/json',
         # Soccer and Golf APIs have different structures; partial support below
         'soccer': 'https://api.sportsdata.io/v3/soccer/scores/json',
         'golf': 'https://api.sportsdata.io/v3/golf/scores/json',
@@ -38,6 +39,7 @@ class SportsDataIOClient:
             'nba': os.getenv('SDIO_NBA_KEY') or fallback,
             'mlb': os.getenv('SDIO_MLB_KEY') or fallback,
             'cfb': os.getenv('SDIO_CFB_KEY') or fallback,
+            'nhl': os.getenv('SDIO_NHL_KEY') or fallback,
             'soccer': os.getenv('SDIO_SOCCER_KEY') or fallback,
             'golf': os.getenv('SDIO_GOLF_KEY') or fallback,
         }

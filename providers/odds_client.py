@@ -21,6 +21,7 @@ class OddsClient:
         'nba': 'basketball_nba',
         'mlb': 'baseball_mlb',
         'cfb': 'americanfootball_ncaaf',
+        'nhl': 'icehockey_nhl',
         # soccer and golf omitted for now due to varied league keys
     }
 
@@ -31,7 +32,7 @@ class OddsClient:
             # Allow construction; methods will no-op without key
             pass
         self.timeout_seconds = 15
-        self.regions = os.getenv('ODDS_REGIONS', 'us')
+        self.regions = os.getenv('ODDS_REGIONS', 'us,us2')
         self.bookmakers_filter = self._parse_list(os.getenv('ODDS_BOOKMAKERS'))
 
     def _parse_list(self, value: Optional[str]) -> Optional[List[str]]:
