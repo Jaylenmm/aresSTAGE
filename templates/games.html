@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}Games - Ares AI{% endblock %}
+
+{% block content %}
+<div class="px-4 py-6 sm:px-0">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-white">Games</h1>
+        <p class="mt-2 text-gray-400">View all upcoming and completed games</p>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="mb-6">
+        <div class="relative">
+            <input type="text" id="searchInput" placeholder="Search by team name..." 
+                   class="vscode-input w-full pl-10 pr-4">
+            <div class="absolute inset-y-0 left-0 flex items-center pl-3">
+                <svg class="w-5 h-5" style="color: var(--vscode-text-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sports Filter Tabs -->
+    <div class="mb-6">
+        <div class="vscode-card p-1">
+            <div class="flex space-x-1">
+                <button onclick="filterBySport('all')" class="sport-tab active px-4 py-2 text-sm font-medium transition-colors rounded-md">
+                    All Sports
+                </button>
+                <button onclick="filterBySport('football')" class="sport-tab px-4 py-2 text-sm font-medium transition-colors rounded-md">
+                    NFL
+                </button>
+                <button onclick="filterBySport('basketball')" class="sport-tab px-4 py-2 text-sm font-medium transition-colors rounded-md">
+                    NBA
+                </button>
+                <button onclick="filterBySport('baseball')" class="sport-tab px-4 py-2 text-sm font-medium transition-colors rounded-md">
+                    MLB
+                </button>
+                <button onclick="filterBySport('soccer')" class="sport-tab px-4 py-2 text-sm font-medium transition-colors rounded-md">
+                    Soccer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Games Table -->
+    <div class="vscode-table">
+        <div class="px-6 py-4 border-b" style="border-color: var(--vscode-border);">
+            <h2 class="text-lg font-semibold" style="color: var(--vscode-text);">All Games</h2>
+        </div>
+        
+        {% if games %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y" style="border-color: var(--vscode-border);">
+                <thead style="background-color: var(--vscode-input);">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--vscode-text-secondary);">Game</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--vscode-text-secondary);">Sport</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--vscode-text-secondary);">Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--vscode-text-secondary);">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--vscode-text-secondary);">Score</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y" style="border-color: var(--vscode-border);" id="gamesTableBody">
+                    {% for game in games %}
+                    <tr class="game-row" style="background-color: var(--vscode-panel);" data-sport="{{ game.sport }}" data-home-team="{{ game.home_team.lower() }}" data-away-team="{{ game.away_team.lower() }}" onmouseover="this.style.backgroundColor='var(--vscode-input)'" onmouseout="this.style.backgroundColor='var(--vscode-panel)'">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium" style="color: var(--vscode-text);">{{ game.home_team }}</div>
+                            <div class="text-sm" style="color: var(--vscode-text-muted);">vs {{ game.away_team }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold orange-accent">
+                                {{ game.sport.title() }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm" style="color: var(--vscode-text);">
+                            {{ game.date.strftime('%m/%d/%Y %I:%M %p') }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold
+                                {% if game.status == 'completed' %}bg-green-600 text-white
+                                {% elif game.status == 'live' %}bg-red-600 text-white
+                                {% else %}bg-gray-600 text-white{% endif %}">
+                                {{ game.status.title() }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm" style="color: var(--vscode-text);">
+                            {% if game.status == 'completed' or game.status == 'live' %}
+                                {{ game.home_score }} - {{ game.away_score }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-8 text-center">
+            <p style="color: var(--vscode-text-muted);">No games available</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+let currentSportFilter = 'all';
+let currentSearchTerm = '';
+
+// Search functionality
+document.getElementById('searchInput').addEventListener('input', function(e) {
+    currentSearchTerm = e.target.value.toLowerCase();
+    filterGames();
+});
+
+// Sport filter functionality
+function filterBySport(sport) {
+    currentSportFilter = sport;
+    
+    // Update active tab
+    document.querySelectorAll('.sport-tab').forEach(tab => {
+        tab.classList.remove('active');
+        tab.classList.add('text-gray-400');
+    });
+    
+    event.target.classList.add('active');
+    event.target.classList.remove('text-gray-400');
+    
+    filterGames();
+}
+
+function filterGames() {
+    const rows = document.querySelectorAll('.game-row');
+    let visibleCount = 0;
+    
+    rows.forEach(row => {
+        const sport = row.getAttribute('data-sport');
+        const homeTeam = row.getAttribute('data-home-team');
+        const awayTeam = row.getAttribute('data-away-team');
+        
+        // Check sport filter
+        const sportMatch = currentSportFilter === 'all' || sport === currentSportFilter;
+        
+        // Check search filter
+        const searchMatch = currentSearchTerm === '' || 
+                           homeTeam.includes(currentSearchTerm) || 
+                           awayTeam.includes(currentSearchTerm);
+        
+        if (sportMatch && searchMatch) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // Update table header to show filtered count
+    const tableHeader = document.querySelector('h2');
+    if (visibleCount === 0) {
+        tableHeader.textContent = 'No Games Found';
+    } else if (currentSportFilter === 'all') {
+        tableHeader.textContent = `All Games (${visibleCount})`;
+    } else {
+        const sportName = currentSportFilter.charAt(0).toUpperCase() + currentSportFilter.slice(1);
+        tableHeader.textContent = `${sportName} Games (${visibleCount})`;
+    }
+}
+
+// Initialize
+filterGames();
+</script>
+
+<style>
+.sport-tab.active {
+    background-color: #ff8c00;
+    color: white;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+}
+
+.sport-tab:not(.active) {
+    color: #9ca3af;
+}
+
+.sport-tab:hover:not(.active) {
+    background-color: rgba(55, 65, 81, 0.5);
+    color: white;
+}
+</style>
+{% endblock %}

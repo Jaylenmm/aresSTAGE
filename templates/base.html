@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>{% block title %}Ares AI - Sports Betting Advisor{% endblock %}</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#1e1e1e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Ares AI">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/ares-logo.svg') }}">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    
+    <!-- Stylesheets -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/mobile.css') }}" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white" style="background-color: #1e1e1e; color: #d4d4d4;">
+    <!-- Mobile Navigation -->
+    <nav style="background-color: #252526; border-bottom: 1px solid #3e3e42;" class="mobile-nav">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <img src="{{ url_for('static', filename='images/ares-logo.svg') }}" alt="Ares AI" class="h-8 w-auto" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <h1 class="text-xl font-bold ml-2" style="color: #ffffff; display: none;">Ares AI</h1>
+                </div>
+                
+                <!-- Mobile Menu Button -->
+                <button id="mobile-menu-button" class="md:hidden p-2" style="color: #cccccc;">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Mobile Menu -->
+            <div id="mobile-menu" class="hidden md:hidden pb-4">
+                <div class="space-y-2">
+                    <a href="{{ url_for('dashboard') }}" class="block px-3 py-2 text-base font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Dashboard</a>
+                    <a href="{{ url_for('games') }}" class="block px-3 py-2 text-base font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Games</a>
+                    <a href="{{ url_for('predictions') }}" class="block px-3 py-2 text-base font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Predictions</a>
+                    <a href="{{ url_for('new_prediction') }}" class="block px-3 py-2 text-base font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Make Prediction</a>
+                </div>
+            </div>
+            
+            <!-- Desktop Menu -->
+            <div class="hidden md:flex items-center ml-10 space-x-4">
+                <a href="{{ url_for('dashboard') }}" class="px-3 py-2 text-sm font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Dashboard</a>
+                <a href="{{ url_for('games') }}" class="px-3 py-2 text-sm font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Games</a>
+                <a href="{{ url_for('predictions') }}" class="px-3 py-2 text-sm font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Predictions</a>
+                <a href="{{ url_for('new_prediction') }}" class="px-3 py-2 text-sm font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Make Prediction</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer style="background-color: #252526; border-top: 1px solid #3e3e42; margin-top: 2rem;">
+        <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+            <p class="text-center text-sm" style="color: #858585;">© 2024 Ares AI - Sports Betting Advisor</p>
+        </div>
+    </footer>
+
+    <!-- Mobile JavaScript -->
+    <script>
+        // Mobile menu toggle
+        document.getElementById('mobile-menu-button').addEventListener('click', function() {
+            const mobileMenu = document.getElementById('mobile-menu');
+            mobileMenu.classList.toggle('hidden');
+        });
+
+        // PWA Install prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            // Show install button if needed
+        });
+
+        // Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then((registration) => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch((registrationError) => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>

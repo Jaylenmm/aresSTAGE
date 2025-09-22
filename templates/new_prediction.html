@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}Make Prediction - Ares AI{% endblock %}
+
+{% block content %}
+<div class="px-4 py-6 sm:px-0">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold" style="color: var(--vscode-text);">Make New Prediction</h1>
+        <p class="mt-2" style="color: var(--vscode-text-muted);">AI-powered sports betting predictions with confidence levels</p>
+    </div>
+
+    <!-- Prediction Form -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Input Form -->
+        <div class="vscode-card">
+            <div class="px-6 py-4 border-b" style="border-color: var(--vscode-border);">
+                <h2 class="text-lg font-semibold" style="color: var(--vscode-text);">Game Information</h2>
+            </div>
+            <div class="p-6">
+                <form id="predictionForm">
+                    <!-- Sport Selection -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium mb-2" style="color: var(--vscode-text);">Sport</label>
+                        <select id="sportSelect" class="vscode-input w-full" required>
+                            <option value="">Select a sport</option>
+                            <option value="football">NFL Football</option>
+                            <option value="basketball">NBA Basketball</option>
+                            <option value="baseball">MLB Baseball</option>
+                            <option value="soccer">Soccer</option>
+                        </select>
+                    </div>
+
+                    <!-- Home Team -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium mb-2" style="color: var(--vscode-text);">Home Team</label>
+                        <input type="text" id="homeTeam" class="vscode-input w-full" placeholder="Enter home team name" required>
+                    </div>
+
+                    <!-- Away Team -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium mb-2" style="color: var(--vscode-text);">Away Team</label>
+                        <input type="text" id="awayTeam" class="vscode-input w-full" placeholder="Enter away team name" required>
+                    </div>
+
+                    <!-- Game Selection (Optional) -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium mb-2" style="color: var(--vscode-text);">Link to Existing Game (Optional)</label>
+                        <select id="gameSelect" class="vscode-input w-full">
+                            <option value="">Select a game to link prediction</option>
+                            {% for game in games %}
+                            <option value="{{ game.id }}" data-home="{{ game.home_team }}" data-away="{{ game.away_team }}" data-sport="{{ game.sport }}">
+                                {{ game.home_team }} vs {{ game.away_team }} ({{ game.sport.title() }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" class="btn-primary w-full">
+                        Generate Prediction
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Results Display -->
+        <div class="vscode-card">
+            <div class="px-6 py-4 border-b" style="border-color: var(--vscode-border);">
+                <h2 class="text-lg font-semibold" style="color: var(--vscode-text);">Prediction Results</h2>
+            </div>
+            <div class="p-6">
+                <div id="predictionResults" class="hidden">
+                    <!-- Results will be populated here -->
+                </div>
+                <div id="noResults" class="text-center py-8">
+                    <p style="color: var(--vscode-text-muted);">Enter game information and click "Generate Prediction" to see AI predictions</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Responsible Gambling Warning -->
+    <div class="mt-8 vscode-card" style="background-color: var(--vscode-input); border: 2px solid #ff8c00;">
+        <div class="p-6">
+            <h3 class="text-lg font-semibold mb-4" style="color: #ff8c00;">⚠️ Responsible Gambling Disclaimer</h3>
+            <p class="text-sm" style="color: var(--vscode-text);">
+                These predictions are for entertainment purposes only and should not be considered as professional betting advice. 
+                Sports betting involves risk and should only be done with money you can afford to lose. Please gamble responsibly. 
+                If you have a gambling problem, please seek help from professional resources.
+            </p>
+            <div class="mt-4">
+                <p class="text-xs" style="color: var(--vscode-text-muted);">
+                    <strong>Resources:</strong> National Council on Problem Gambling: 1-800-522-4700 | 
+                    Gamblers Anonymous: www.gamblersanonymous.org
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('predictionForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const homeTeam = document.getElementById('homeTeam').value.trim();
+    const awayTeam = document.getElementById('awayTeam').value.trim();
+    const sport = document.getElementById('sportSelect').value;
+    const gameId = document.getElementById('gameSelect').value;
+    
+    if (!homeTeam || !awayTeam || !sport) {
+        alert('Please fill in all required fields');
+        return;
+    }
+    
+    // Show loading state
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = 'Generating...';
+    submitBtn.disabled = true;
+    
+    // Make prediction request
+    fetch('/predict', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            home_team: homeTeam,
+            away_team: awayTeam,
+            sport: sport,
+            game_id: gameId || null
+        })
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        if (data.success) {
+            displayPredictionResults(data.prediction);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error details:', error);
+        alert('Error making prediction: ' + error.message + '. Check console for details.');
+    })
+    .finally(() => {
+        // Reset button
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    });
+});
+
+function displayPredictionResults(prediction) {
+    console.log('Displaying prediction results:', prediction);
+    
+    const resultsDiv = document.getElementById('predictionResults');
+    const noResultsDiv = document.getElementById('noResults');
+    
+    if (!resultsDiv || !noResultsDiv) {
+        console.error('Could not find required DOM elements');
+        alert('Error: Could not find results display elements');
+        return;
+    }
+    
+    // Hide no results message
+    noResultsDiv.style.display = 'none';
+    
+    // Create results HTML using safer string concatenation
+    const homeTeam = prediction.game_info.home_team;
+    const awayTeam = prediction.game_info.away_team;
+    const sport = prediction.game_info.sport;
+    const predictionTime = new Date(prediction.game_info.prediction_time).toLocaleString();
+    
+    const spreadValue = prediction.spread_prediction.predicted_spread;
+    const spreadConfidence = prediction.spread_prediction.confidence;
+    const spreadReasoning = prediction.spread_prediction.reasoning;
+    
+    const totalValue = prediction.total_prediction.predicted_total;
+    const totalConfidence = prediction.total_prediction.confidence;
+    const totalReasoning = prediction.total_prediction.reasoning;
+    
+    const overallConfidence = prediction.overall_confidence;
+    
+    // Determine spread display
+    let spreadDisplay;
+    if (spreadValue > 0) {
+        spreadDisplay = homeTeam + ' -' + spreadValue;
+    } else {
+        spreadDisplay = awayTeam + ' +' + Math.abs(spreadValue);
+    }
+    
+    const resultsHTML = 
+        '<div class="space-y-6">' +
+            '<div class="p-4" style="background-color: var(--vscode-input); border: 1px solid var(--vscode-border); border-radius: 3px;">' +
+                '<h3 class="font-semibold mb-2" style="color: var(--vscode-text);">Game Information</h3>' +
+                '<p style="color: var(--vscode-text);">' + homeTeam + ' vs ' + awayTeam + '</p>' +
+                '<p class="text-sm" style="color: var(--vscode-text-muted);">' + sport.charAt(0).toUpperCase() + sport.slice(1) + ' • ' + predictionTime + '</p>' +
+            '</div>' +
+            
+            '<div class="p-4" style="background-color: var(--vscode-input); border: 1px solid var(--vscode-border); border-radius: 3px;">' +
+                '<div class="flex justify-between items-center mb-2">' +
+                    '<h3 class="font-semibold" style="color: var(--vscode-text);">Spread Prediction</h3>' +
+                    '<span class="px-3 py-1 text-sm font-medium" style="background-color: var(--vscode-orange); color: white;">' + spreadConfidence + '% confidence</span>' +
+                '</div>' +
+                '<p class="text-lg font-bold mb-2" style="color: var(--vscode-text);">' + spreadDisplay + '</p>' +
+                '<p class="text-sm" style="color: var(--vscode-text-muted);">' + spreadReasoning + '</p>' +
+            '</div>' +
+            
+            '<div class="p-4" style="background-color: var(--vscode-input); border: 1px solid var(--vscode-border); border-radius: 3px;">' +
+                '<div class="flex justify-between items-center mb-2">' +
+                    '<h3 class="font-semibold" style="color: var(--vscode-text);">Total Prediction</h3>' +
+                    '<span class="px-3 py-1 text-sm font-medium" style="background-color: var(--vscode-orange); color: white;">' + totalConfidence + '% confidence</span>' +
+                '</div>' +
+                '<p class="text-lg font-bold mb-2" style="color: var(--vscode-text);">Over ' + totalValue + '</p>' +
+                '<p class="text-sm" style="color: var(--vscode-text-muted);">' + totalReasoning + '</p>' +
+            '</div>' +
+            
+            '<div class="p-4 text-center" style="background-color: var(--vscode-panel); border: 1px solid var(--vscode-border); border-radius: 3px;">' +
+                '<h3 class="font-semibold mb-2" style="color: var(--vscode-text);">Overall Confidence</h3>' +
+                '<div class="text-3xl font-bold" style="background-color: var(--vscode-orange); color: white; padding: 0.5rem; border-radius: 3px; display: inline-block;">' + overallConfidence + '%</div>' +
+            '</div>' +
+        '</div>';
+    
+    resultsDiv.innerHTML = resultsHTML;
+    resultsDiv.style.display = 'block';
+}
+
+// Auto-fill form when game is selected
+document.getElementById('gameSelect').addEventListener('change', function(e) {
+    const selectedOption = e.target.selectedOptions[0];
+    if (selectedOption && selectedOption.value) {
+        document.getElementById('homeTeam').value = selectedOption.dataset.home;
+        document.getElementById('awayTeam').value = selectedOption.dataset.away;
+        document.getElementById('sportSelect').value = selectedOption.dataset.sport;
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Ares AI{% endblock %}
+
+{% block content %}
+<div class="mobile-spacing">
+    <!-- Header -->
+    <div class="mb-6">
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+            <div>
+                <h1 class="mobile-text-2xl font-bold" style="color: var(--vscode-text);">Dashboard</h1>
+                <p class="mt-2 mobile-text-sm" style="color: var(--vscode-text-muted);">AI-powered sports betting predictions and insights</p>
+            </div>
+            <button onclick="collectData()" class="btn-primary mobile-full-width sm:w-auto">
+                Collect Sports Data
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="mobile-grid mb-6">
+        <div class="mobile-card">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 orange-accent flex items-center justify-center rounded-lg">
+                        <span class="text-white font-semibold">G</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="mobile-text-sm font-medium" style="color: var(--vscode-text-muted);">Total Games</p>
+                    <p class="mobile-text-xl font-semibold" style="color: var(--vscode-text);">{{ games|length }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="mobile-card">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 orange-accent flex items-center justify-center rounded-lg">
+                        <span class="text-white font-semibold">P</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="mobile-text-sm font-medium" style="color: var(--vscode-text-muted);">Predictions Made</p>
+                    <p class="mobile-text-xl font-semibold" style="color: var(--vscode-text);">{{ predictions|length }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="mobile-card">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-10 h-10 orange-accent flex items-center justify-center rounded-lg">
+                        <span class="text-white font-semibold">%</span>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <p class="mobile-text-sm font-medium" style="color: var(--vscode-text-muted);">Avg Confidence</p>
+                    <p class="mobile-text-xl font-semibold" style="color: var(--vscode-text);">
+                        {% if predictions %}
+                            {{ "%.1f"|format((predictions|map(attribute='confidence')|sum / predictions|length * 100)) }}%
+                        {% else %}
+                            0%
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Games and Predictions -->
+    <div class="space-y-6 lg:grid lg:grid-cols-2 lg:gap-8 lg:space-y-0">
+        <!-- Recent Games -->
+        <div class="mobile-card">
+            <div class="px-4 py-3 border-b" style="border-color: var(--vscode-border);">
+                <h2 class="mobile-text-lg font-semibold" style="color: var(--vscode-text);">Recent Games</h2>
+            </div>
+            <div class="p-4">
+                {% if games %}
+                    <div class="space-y-3">
+                        {% for game in games[:5] %}
+                        <div class="flex items-center justify-between p-3" style="background-color: var(--vscode-input); border: 1px solid var(--vscode-border); border-radius: 8px;">
+                            <div class="flex-1 min-w-0">
+                                <p class="mobile-text-sm font-medium truncate" style="color: var(--vscode-text);">{{ game.home_team }} vs {{ game.away_team }}</p>
+                                <p class="mobile-text-xs" style="color: var(--vscode-text-muted);">{{ game.sport.title() }} • {{ game.date.strftime('%m/%d/%Y') }}</p>
+                            </div>
+                            <span class="status-badge
+                                {% if game.status == 'completed' %}status-completed
+                                {% elif game.status == 'live' %}status-live
+                                {% else %}status-upcoming{% endif %}">
+                                {{ game.status.title() }}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-6">
+                        <p class="mb-3 mobile-text-sm" style="color: var(--vscode-text-muted);">No games available</p>
+                        <p class="mobile-text-xs" style="color: var(--vscode-text-muted);">Click "Collect Sports Data" to get real game data</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Recent Predictions -->
+        <div class="mobile-card">
+            <div class="px-4 py-3 border-b" style="border-color: var(--vscode-border);">
+                <h2 class="mobile-text-lg font-semibold" style="color: var(--vscode-text);">Recent Predictions</h2>
+            </div>
+            <div class="p-4">
+                {% if predictions %}
+                    <div class="space-y-3">
+                        {% for prediction in predictions[:5] %}
+                        <div class="flex items-center justify-between p-3" style="background-color: var(--vscode-input); border: 1px solid var(--vscode-border); border-radius: 8px;">
+                            <div class="flex-1 min-w-0">
+                                <p class="mobile-text-sm font-medium truncate" style="color: var(--vscode-text);">{{ prediction.predicted_winner }}</p>
+                                <p class="mobile-text-xs" style="color: var(--vscode-text-muted);">{{ prediction.game.home_team }} vs {{ prediction.game.away_team }}</p>
+                            </div>
+                            <div class="text-right ml-3">
+                                <p class="mobile-text-sm font-medium" style="color: var(--vscode-text);">{{ "%.0f"|format(prediction.confidence * 100) }}%</p>
+                                <p class="mobile-text-xs" style="color: var(--vscode-text-muted);">{{ prediction.created_at.strftime('%m/%d') }}</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-6">
+                        <p class="mb-3 mobile-text-sm" style="color: var(--vscode-text-muted);">No predictions available</p>
+                        <p class="mobile-text-xs" style="color: var(--vscode-text-muted);">Predictions will appear here once games are collected</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function collectData() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+        // Show loading state
+        button.innerHTML = 'Collecting...';
+        button.disabled = true;
+    
+    fetch('/collect-data', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Success: ${data.message}`);
+            // Reload the page to show new data
+            location.reload();
+        } else {
+            alert(`Error: ${data.message}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error collecting data. Please try again.');
+    })
+    .finally(() => {
+        // Reset button
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+}
+</script>
+{% endblock %}

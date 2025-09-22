@@ -1,0 +1,179 @@
+/* Custom styles for Ares AI - VS Code Dark Theme with Orange Accents */
+
+/* VS Code Dark Theme Colors */
+:root {
+    --vscode-bg: #1e1e1e;
+    --vscode-sidebar: #252526;
+    --vscode-panel: #2d2d30;
+    --vscode-input: #3c3c3c;
+    --vscode-border: #3e3e42;
+    --vscode-text: #d4d4d4;
+    --vscode-text-secondary: #cccccc;
+    --vscode-text-muted: #858585;
+    --vscode-orange: #ff8c00;
+    --vscode-orange-hover: #ff9500;
+}
+
+/* Smooth transitions */
+* {
+    transition: all 0.2s ease-in-out;
+}
+
+/* VS Code style scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--vscode-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--vscode-input);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--vscode-border);
+}
+
+/* VS Code style hover effects */
+.vscode-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Loading animation */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: .5;
+    }
+}
+
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* VS Code style buttons */
+.btn-primary {
+    background-color: var(--vscode-orange);
+    color: white;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+    background-color: var(--vscode-orange-hover);
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background-color: var(--vscode-input);
+    color: var(--vscode-text);
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--vscode-border);
+    border-radius: 3px;
+    transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+    background-color: var(--vscode-border);
+}
+
+/* VS Code style status indicators */
+.status-upcoming {
+    background-color: #6b7280;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-live {
+    background-color: #f14c4c;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-completed {
+    background-color: #059669;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* VS Code style cards */
+.vscode-card {
+    background-color: var(--vscode-panel);
+    border: 1px solid var(--vscode-border);
+    border-radius: 3px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+/* VS Code style inputs */
+.vscode-input {
+    background-color: var(--vscode-input);
+    border: 1px solid var(--vscode-border);
+    color: var(--vscode-text);
+    padding: 0.75rem;
+    border-radius: 3px;
+    font-size: 0.875rem;
+}
+
+.vscode-input:focus {
+    outline: none;
+    border-color: var(--vscode-orange);
+    box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.2);
+}
+
+/* VS Code style tables */
+.vscode-table {
+    background-color: var(--vscode-panel);
+    border: 1px solid var(--vscode-border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.vscode-table th {
+    background-color: var(--vscode-input);
+    color: var(--vscode-text-secondary);
+    padding: 0.75rem 1.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.vscode-table td {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--vscode-border);
+    color: var(--vscode-text);
+}
+
+.vscode-table tr:hover {
+    background-color: var(--vscode-input);
+}
+
+/* Orange accent elements */
+.orange-accent {
+    background-color: var(--vscode-orange);
+    color: white;
+}
+
+.orange-accent:hover {
+    background-color: var(--vscode-orange-hover);
+}
