@@ -4,8 +4,6 @@ Collects player statistics and performance data from free sources
 """
 
 import requests
-from bs4 import BeautifulSoup
-import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import time
