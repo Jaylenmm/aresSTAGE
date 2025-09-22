@@ -393,6 +393,18 @@ def new_prediction():
     games = Game.query.filter(Game.status == 'upcoming').order_by(Game.date.asc()).all()
     return render_template('new_prediction.html', games=games)
 
+# Ensure database is ready at import time (for Gunicorn & Celery)
+def ensure_database_initialized():
+    try:
+        with app.app_context():
+            db.create_all()
+            ensure_game_schema()
+    except Exception:
+        pass
+
+# Run initialization immediately so health checks and workers have tables
+ensure_database_initialized()
+
 if __name__ == '__main__':
     # Create database tables
     with app.app_context():
