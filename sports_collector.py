@@ -219,9 +219,19 @@ class SportsDataCollector:
         print(f"Golf events fetched: {len(golf)} (lookahead {self.lookahead_days}d)")
         all_games.extend(golf)
         
-        # Save to database
+        # Save to database if SDIO provided games
         if all_games:
             self.save_games_to_db(all_games)
+        else:
+            # Fallback: seed upcoming from odds if schedules are empty
+            try:
+                fallback = self._build_games_from_odds()
+                if fallback:
+                    print(f"Fallback created {len(fallback)} games from odds events")
+                    self.save_games_to_db(fallback)
+                    all_games = fallback
+            except Exception as e:
+                print(f"Fallback from odds failed: {e}")
         
         # Also fetch odds to enrich current and upcoming games
         try:
@@ -267,6 +277,33 @@ class SportsDataCollector:
             if updated:
                 db.session.commit()
             return updated
+
+    def _build_games_from_odds(self):
+        """When schedules are empty, create upcoming games from odds events for supported sports."""
+        created = []
+        now = datetime.utcnow()
+        for sport in ['nfl', 'nba', 'mlb', 'cfb']:
+            odds_list = self.odds.fetch_odds_for_sport(sport)
+            print(f"Fallback odds events for {sport}: {len(odds_list)}")
+            for ev in odds_list:
+                dt = ev.get('commence_time') or (now + timedelta(hours=4))
+                created.append({
+                    'home_team': ev.get('home_team'),
+                    'away_team': ev.get('away_team'),
+                    'date': dt,
+                    'sport': sport,
+                    'status': 'upcoming',
+                    'home_score': 0,
+                    'away_score': 0,
+                    'spread': ev.get('spread'),
+                    'total': ev.get('total'),
+                    'home_moneyline': ev.get('home_moneyline'),
+                    'away_moneyline': ev.get('away_moneyline'),
+                    'bookmaker': ev.get('bookmaker'),
+                    'odds_last_updated': ev.get('last_update'),
+                })
+        # If nothing, return empty list
+        return created
     
     def _get_realistic_spread(self, home_team, away_team, sport):
         """Generate realistic spreads based on team strength"""

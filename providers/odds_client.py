@@ -74,6 +74,7 @@ class OddsClient:
         for ev in events:
             home = ev.get('home_team') or ''
             away = ev.get('away_team') or ''
+            commence_time = self._parse_time(ev.get('commence_time'))
             bookmakers = ev.get('bookmakers') or []
             if self.bookmakers_filter:
                 bookmakers = [b for b in bookmakers if b.get('key') in self.bookmakers_filter]
@@ -92,6 +93,7 @@ class OddsClient:
             results.append({
                 'home_team': home,
                 'away_team': away,
+                'commence_time': commence_time,
                 'home_moneyline': moneylines.get('home'),
                 'away_moneyline': moneylines.get('away'),
                 'spread': spread,
