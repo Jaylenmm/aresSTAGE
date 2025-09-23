@@ -1,9 +1,10 @@
 from datetime import timedelta
 from typing import List, Dict
-from app import Game, db
 
 def get_featured_upcoming(sport: str, now_est, window_days: int = 7, limit: int = 4) -> List[Game]:
     try:
+        # Local import to avoid circular dependency
+        from app import Game, db
         window_end = now_est + timedelta(days=window_days)
         q = Game.query.filter(
             Game.status == 'upcoming',
@@ -57,8 +58,9 @@ def get_featured_props(sport: str, limit: int = 4) -> List[Dict]:
         return []
 
 def get_news(sport: str, limit: int = 5) -> List[Dict]:
-    from app import fetch_espn_articles
     try:
+        # Local import to avoid circular dependency
+        from app import fetch_espn_articles
         return fetch_espn_articles(sport, limit=limit)
     except Exception:
         return []
