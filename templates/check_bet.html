@@ -61,10 +61,13 @@ function renderOptions(opts) {
     optionsDiv.innerHTML = '<div class="text-slate-300">No betting options found.</div>';
     return;
   }
+  // Sort by probability desc (treat nulls as lowest)
+  const sorted = [...opts].sort((a,b) => (b.probability??-1) - (a.probability??-1));
   optionsDiv.innerHTML = '';
-  for (const o of opts) {
+  sorted.forEach((o, idx) => {
     const card = document.createElement('div');
-    card.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3';
+    const highlight = idx === 0 ? ' ring-2 ring-orange-400 shadow-[0_0_20px_rgba(249,115,22,0.35)] ' : '';
+    card.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3' + highlight;
     card.innerHTML = `
       <div class="text-xs uppercase tracking-wide text-slate-700">${o.sport || ''}</div>
       <div class="mt-1 font-semibold">${o.teams || (o.team ? (o.team + ' vs ' + (o.opponent || '')) : '')}</div>
@@ -81,7 +84,7 @@ function renderOptions(opts) {
       </div>
     `;
     optionsDiv.appendChild(card);
-  }
+  });
 }
 
 async function saveBet(o) {
