@@ -107,7 +107,7 @@ class SportsDataCollector:
         try:
             return self.sdio.fetch_upcoming_games('golf', days_ahead=self.lookahead_days)
         except Exception:
-        return []
+            return []
     
     def scrape_espn_games(self):
         """Backup web scraping method - not implemented"""
