@@ -15,15 +15,15 @@
 </div>
 
 <script>
-// Pulse effect CSS
+// Orange border glow pulse CSS
 const styleEl = document.createElement('style');
 styleEl.textContent = `
-@keyframes pulseOrange {
-  0% { opacity: .35; transform: scale(0.98); }
-  50% { opacity: .8; transform: scale(1.02); }
-  100% { opacity: .35; transform: scale(0.98); }
+@keyframes ringPulseOrange {
+  0% { box-shadow: 0 0 0 4px rgba(249,115,22,0.45), 0 0 24px rgba(249,115,22,0.55); }
+  50% { box-shadow: 0 0 0 6px rgba(249,115,22,0.65), 0 0 36px rgba(249,115,22,0.75); }
+  100% { box-shadow: 0 0 0 4px rgba(249,115,22,0.45), 0 0 24px rgba(249,115,22,0.55); }
 }
-.animate-pulse-orange { animation: pulseOrange 2s ease-in-out infinite; }
+.animate-ring-pulse-orange { animation: ringPulseOrange 1.8s ease-in-out infinite; }
 `;
 document.head.appendChild(styleEl);
 
@@ -74,18 +74,18 @@ function renderOptions(opts) {
     return;
   }
   // Sort by probability desc (treat nulls as lowest)
+  const toTitle = (s) => (s||'').toLowerCase().split(' ').map(w=> w ? (w[0].toUpperCase()+w.slice(1)) : '').join(' ');
   const sorted = [...opts].sort((a,b) => (b.probability??-1) - (a.probability??-1));
   optionsDiv.innerHTML = '';
   sorted.forEach((o, idx) => {
     const card = document.createElement('div');
     const isTop = idx === 0;
-    const highlightClass = isTop ? ' border-2 border-orange-500 ' : '';
-    card.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 relative overflow-hidden' + highlightClass;
+    const highlightClass = isTop ? ' border-2 border-orange-500 animate-ring-pulse-orange ' : '';
+    card.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 relative' + highlightClass;
     card.innerHTML = `
-      ${isTop ? '<div class="absolute inset-0 -z-10 rounded-2xl animate-pulse-orange" style="background: radial-gradient(closest-side, rgba(249,115,22,0.35), rgba(249,115,22,0)); filter: blur(6px);"></div>' : ''}
       ${isTop ? '<div class="absolute -top-2 -right-2 bg-orange-500 text-white text-xs px-2 py-1 rounded-lg shadow">Top pick</div>' : ''}
-      <div class="text-xs uppercase tracking-wide text-slate-700">${o.sport || ''}</div>
-      <div class="mt-1 font-semibold">${o.teams || (o.team ? (o.team + ' vs ' + (o.opponent || '')) : '')}</div>
+      <div class="text-xs uppercase tracking-wide text-slate-700">${(o.sport || '').toUpperCase()}</div>
+      <div class="mt-1 font-semibold">${o.teams ? toTitle(o.teams) : (o.team ? (toTitle(o.team) + ' vs ' + toTitle(o.opponent || '')) : '')}</div>
       <div class="text-sm text-slate-700">${o.date ? new Date(o.date).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET' : ''}</div>
       <div class="mt-2 text-sm">
         <div><span class="font-semibold">Type:</span> ${o.type}</div>

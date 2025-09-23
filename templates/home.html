@@ -25,7 +25,7 @@
             {% for g in live_games %}
             <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="min-w-[260px] bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 block">
                 <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
-                <div class="mt-1 font-semibold">{{ g.away_team }} @ {{ g.home_team }}</div>
+                <div class="mt-1 font-semibold">{{ g.away_team|title }} @ {{ g.home_team|title }}</div>
                 <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
                 <div class="mt-2 flex items-center justify-between text-sm">
                     <div>Score: {{ g.away_score }} - {{ g.home_score }}</div>
@@ -50,7 +50,7 @@
             {% for g in featured_games %}
             <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 block">
                 <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
-                <div class="mt-1 font-semibold">{{ g.away_team }} @ {{ g.home_team }}</div>
+                <div class="mt-1 font-semibold">{{ g.away_team|title }} @ {{ g.home_team|title }}</div>
                 <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
                 <div class="mt-2 grid grid-cols-4 gap-2 text-sm">
                     <div>
@@ -85,7 +85,7 @@
             <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 flex items-center justify-between block">
                 <div>
                     <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
-                    <div class="font-semibold">{{ g.away_team }} @ {{ g.home_team }}</div>
+                    <div class="font-semibold">{{ g.away_team|title }} @ {{ g.home_team|title }}</div>
                     <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
                 </div>
                 <div class="text-right text-sm">
