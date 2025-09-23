@@ -232,8 +232,48 @@ class Prediction(db.Model):
 
 # Routes
 @app.route('/')
+def home():
+    """Mobile-first home page showing live, featured, and upcoming games"""
+    try:
+        selected_sport = request.args.get('sport')
+        base_query = Game.query.filter(Game.status.in_(['upcoming', 'live']))
+        if selected_sport:
+            base_query = base_query.filter(Game.sport == selected_sport)
+        all_upcoming = base_query.order_by(Game.date.asc()).limit(50).all()
+
+        live_games = [g for g in all_upcoming if g.status == 'live'][:10]
+        upcoming_games = [g for g in all_upcoming if g.status != 'live'][:20]
+
+        # Featured: games with betting info
+        featured_query = Game.query.filter(
+            Game.status.in_(['upcoming', 'live'])
+        )
+        if selected_sport:
+            featured_query = featured_query.filter(Game.sport == selected_sport)
+        featured_games = featured_query.filter(
+            db.or_(Game.spread.isnot(None), Game.total.isnot(None), Game.home_moneyline.isnot(None), Game.away_moneyline.isnot(None))
+        ).order_by(Game.date.asc()).limit(12).all()
+
+        # Available sports for quick filters
+        distinct_sports = [row[0] for row in db.session.query(Game.sport).distinct().all()]
+        # Maintain a familiar order
+        preferred_order = ['nfl', 'nba', 'mlb', 'nhl', 'cfb', 'soccer', 'golf']
+        sports = [s for s in preferred_order if s in distinct_sports] + [s for s in distinct_sports if s not in preferred_order]
+
+        return render_template('home.html',
+                               sports=sports,
+                               selected_sport=selected_sport,
+                               live_games=live_games,
+                               featured_games=featured_games,
+                               upcoming_games=upcoming_games)
+    except Exception as e:
+        # Fallback to a simple list if anything goes wrong
+        games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).order_by(Game.date.asc()).limit(20).all()
+        return render_template('dashboard.html', games=games, predictions=[])
+
+@app.route('/dashboard')
 def dashboard():
-    """Main dashboard page"""
+    """Legacy dashboard page"""
     games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).order_by(Game.date.asc()).limit(10).all()
     predictions = Prediction.query.order_by(Prediction.created_at.desc()).limit(5).all()
     return render_template('dashboard.html', games=games, predictions=predictions)
