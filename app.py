@@ -284,7 +284,7 @@ def load_user(user_id):
 def home():
     """Mobile-first home page showing live, featured, and upcoming games"""
     try:
-        selected_sport = request.args.get('sport')
+        selected_sport = request.args.get('sport') or 'nfl'
         date_range = (request.args.get('range') or 'today').lower()
         sort_by = (request.args.get('sort') or 'time').lower()
 
@@ -328,7 +328,7 @@ def home():
         try:
             # Base upcoming window
             upcoming_q = Game.query.filter(
-                Game.status.in_(['upcoming', 'live']),
+                Game.status == 'upcoming',
                 Game.date >= now_est
             )
             if selected_sport:
@@ -382,7 +382,7 @@ def home():
             except Exception:
                 featured_props = []
             try:
-                news_articles = fetch_espn_articles(selected_sport, limit=6)
+                news_articles = fetch_espn_articles(selected_sport, limit=5)
             except Exception:
                 news_articles = []
 
@@ -839,9 +839,10 @@ def provider_diagnostics():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-def fetch_espn_articles(sport: str, limit: int = 6):
+def fetch_espn_articles(sport: str, limit: int = 5):
     import requests
     import xml.etree.ElementTree as ET
+    import re
     rss_map = {
         'nfl': 'https://www.espn.com/espn/rss/nfl/news',
         'nba': 'https://www.espn.com/espn/rss/nba/news',
@@ -863,8 +864,13 @@ def fetch_espn_articles(sport: str, limit: int = 6):
             title = (item.findtext('title') or '').strip()
             link = (item.findtext('link') or '').strip()
             pub = (item.findtext('pubDate') or '').strip()
+            desc = (item.findtext('description') or '').strip()
+            # Strip HTML from description and truncate to ~180 chars
+            desc = re.sub('<[^<]+?>', '', desc)
+            if len(desc) > 180:
+                desc = desc[:177] + '...'
             if title and link:
-                items.append({'title': title, 'link': link, 'published': pub})
+                items.append({'title': title, 'link': link, 'published': pub, 'snippet': desc, 'source': 'ESPN'})
             if len(items) >= limit:
                 break
         return items

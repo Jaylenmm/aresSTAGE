@@ -129,7 +129,8 @@
             {% for n in news_articles %}
             <a class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 hover:bg-slate-50" href="{{ n.link }}" target="_blank">
                 <div class="font-semibold">{{ n.title }}</div>
-                <div class="text-xs text-slate-600 mt-1">{{ n.published }}</div>
+                {% if n.snippet %}<div class="text-sm text-slate-700 mt-1">{{ n.snippet }}</div>{% endif %}
+                <div class="text-xs text-slate-600 mt-1">{{ n.published }} · Source: {{ n.source or 'ESPN' }}</div>
             </a>
             {% endfor %}
             {% if not news_articles %}
