@@ -290,6 +290,130 @@ def predictions():
     predictions = Prediction.query.order_by(Prediction.created_at.desc()).limit(100).all()
     return render_template('predictions.html', predictions=predictions)
 
+@app.route('/check-your-bet')
+def check_your_bet():
+    """Mobile-first page to search teams/players and evaluate bets"""
+    return render_template('check_bet.html')
+
+@app.route('/api/search', methods=['GET'])
+def api_search():
+    """Autosuggest teams from upcoming/live games (players TBD)"""
+    try:
+        q = (request.args.get('q') or '').strip().lower()
+        if not q:
+            return jsonify([])
+        games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).all()
+        suggestions = set()
+        for g in games:
+            if q in (g.home_team or '').lower():
+                suggestions.add(g.home_team)
+            if q in (g.away_team or '').lower():
+                suggestions.add(g.away_team)
+        result = [{'type': 'team', 'name': name} for name in sorted(suggestions)][:20]
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/check_bet_options', methods=['GET'])
+def api_check_bet_options():
+    """Given an entity (team), return available bets with probabilities and reasons."""
+    try:
+        name = (request.args.get('entity') or '').strip()
+        if not name:
+            return jsonify({'success': False, 'error': 'Missing entity'}), 400
+        normalized = name.lower()
+        # Find upcoming/live games involving this team
+        games = Game.query.filter(
+            Game.status.in_(['upcoming', 'live']),
+            db.or_(Game.home_team.ilike(f"%{name}%"), Game.away_team.ilike(f"%{name}%"))
+        ).order_by(Game.date.asc()).limit(5).all()
+        options = []
+        for g in games:
+            is_home = g.home_team.lower() == normalized
+            is_away = g.away_team.lower() == normalized
+            if not (is_home or is_away):
+                # Fuzzy match may not be exact; determine closest
+                is_home = normalized in (g.home_team or '').lower()
+                is_away = normalized in (g.away_team or '').lower()
+
+            # Use prediction engine for probability estimates
+            try:
+                pred = prediction_engine.make_full_prediction(g.home_team, g.away_team, g.sport)
+            except Exception:
+                pred = None
+
+            # Moneyline
+            if g.home_moneyline is not None or g.away_moneyline is not None:
+                price = g.home_moneyline if is_home else (g.away_moneyline if is_away else None)
+                if price is not None:
+                    prob = None
+                    reason = 'Based on recent form and matchup.'
+                    if pred and 'spread_prediction' in pred:
+                        prob = round(pred['spread_prediction'].get('confidence', 60), 1)
+                        reason = f"Predicted edge on the spread suggests {name} value."
+                    options.append({
+                        'game_id': g.id,
+                        'type': 'moneyline',
+                        'team': name,
+                        'price': price,
+                        'probability': prob,
+                        'reason': reason,
+                        'opponent': g.away_team if is_home else g.home_team,
+                        'date': g.date.isoformat(),
+                        'sport': g.sport
+                    })
+
+            # Spread
+            if g.spread is not None:
+                team_line = g.spread if is_home else (-g.spread if is_away else None)
+                if team_line is not None:
+                    prob = None
+                    reason = 'Line vs predicted spread analysis.'
+                    if pred and 'spread_prediction' in pred:
+                        model_spread = pred['spread_prediction'].get('predicted_spread')
+                        conf = pred['spread_prediction'].get('confidence')
+                        prob = round(conf, 1) if conf is not None else None
+                        if model_spread is not None:
+                            edge = (model_spread - team_line) if is_home else ((-model_spread) - team_line)
+                            reason = f"Model edge {edge:+.1f} vs line {team_line:+.1f}."
+                    options.append({
+                        'game_id': g.id,
+                        'type': 'spread',
+                        'team': name,
+                        'line': team_line,
+                        'probability': prob,
+                        'reason': reason,
+                        'opponent': g.away_team if is_home else g.home_team,
+                        'date': g.date.isoformat(),
+                        'sport': g.sport
+                    })
+
+            # Total
+            if g.total is not None:
+                prob = None
+                reason = 'Total vs model projection.'
+                if pred and 'total_prediction' in pred:
+                    model_total = pred['total_prediction'].get('predicted_total')
+                    conf = pred['total_prediction'].get('confidence')
+                    prob = round(conf, 1) if conf is not None else None
+                    if model_total is not None:
+                        diff = model_total - g.total
+                        reason = f"Model total {model_total:.1f} vs line {g.total:.1f} (Δ {diff:+.1f})."
+                options.append({
+                    'game_id': g.id,
+                    'type': 'total',
+                    'line': g.total,
+                    'probability': prob,
+                    'reason': reason,
+                    'teams': f"{g.away_team} @ {g.home_team}",
+                    'date': g.date.isoformat(),
+                    'sport': g.sport
+                })
+
+        return jsonify({'success': True, 'options': options})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/games', methods=['GET'])
 def api_games():
     """API endpoint for games data"""

@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block title %}Check your bet{% endblock %}
+{% block content %}
+<div class="space-y-4">
+    <h1 class="text-xl font-bold text-white">Check your bet</h1>
+
+    <!-- Search -->
+    <div class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3">
+        <input id="search-input" type="text" placeholder="Search team or player" class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none" />
+        <div id="suggestions" class="mt-2 space-y-1"></div>
+    </div>
+
+    <!-- Options -->
+    <div id="bet-options" class="space-y-2"></div>
+</div>
+
+<script>
+let debounceTimer;
+const input = document.getElementById('search-input');
+const suggestions = document.getElementById('suggestions');
+const optionsDiv = document.getElementById('bet-options');
+
+input.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  const q = input.value.trim();
+  if (!q) {
+    suggestions.innerHTML = '';
+    return;
+  }
+  debounceTimer = setTimeout(async () => {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+    suggestions.innerHTML = '';
+    for (const s of data) {
+      const a = document.createElement('button');
+      a.className = 'w-full text-left px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50';
+      a.textContent = `${s.name}`;
+      a.onclick = () => selectEntity(s.name);
+      suggestions.appendChild(a);
+    }
+  }, 200);
+});
+
+async function selectEntity(name) {
+  suggestions.innerHTML = '';
+  input.value = name;
+  optionsDiv.innerHTML = '<div class="text-slate-300">Loading options...</div>';
+  try {
+    const res = await fetch(`/api/check_bet_options?entity=${encodeURIComponent(name)}`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed');
+    renderOptions(data.options || []);
+  } catch (e) {
+    optionsDiv.innerHTML = `<div class="text-red-400">${e.message}</div>`;
+  }
+}
+
+function renderOptions(opts) {
+  if (!opts.length) {
+    optionsDiv.innerHTML = '<div class="text-slate-300">No betting options found.</div>';
+    return;
+  }
+  optionsDiv.innerHTML = '';
+  for (const o of opts) {
+    const card = document.createElement('div');
+    card.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3';
+    card.innerHTML = `
+      <div class="text-xs uppercase tracking-wide text-slate-700">${o.sport || ''}</div>
+      <div class="mt-1 font-semibold">${o.teams || (o.team ? (o.team + ' vs ' + (o.opponent || '')) : '')}</div>
+      <div class="text-sm text-slate-700">${o.date ? new Date(o.date).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET' : ''}</div>
+      <div class="mt-2 text-sm">
+        <div><span class="font-semibold">Type:</span> ${o.type}</div>
+        ${o.price !== undefined ? `<div><span class="font-semibold">Price:</span> ${o.price}</div>` : ''}
+        ${o.line !== undefined ? `<div><span class="font-semibold">Line:</span> ${o.line}</div>` : ''}
+        ${o.probability !== null && o.probability !== undefined ? `<div><span class="font-semibold">Hit %:</span> ${o.probability}%</div>` : ''}
+        ${o.reason ? `<div class="text-slate-700 mt-1">${o.reason}</div>` : ''}
+      </div>
+    `;
+    optionsDiv.appendChild(card);
+  }
+}
+</script>
+{% endblock %}
+
