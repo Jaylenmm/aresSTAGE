@@ -500,11 +500,9 @@ def api_save_bet():
     """Save a user's selected bet and our probability for later accuracy checks."""
     try:
         data = request.get_json() or {}
-        # Minimal fields to store; extend later if needed
-        required = ['type', 'sport', 'team', 'opponent', 'line', 'price', 'probability', 'date']
-        missing = [k for k in required if k not in data]
-        if missing:
-            return jsonify({'success': False, 'error': f'Missing fields: {", ".join(missing)}'}), 400
+        # Minimal required: bet type and sport (sport can be inferred from game if provided)
+        if not data.get('type'):
+            return jsonify({'success': False, 'error': 'Missing field: type'}), 400
         group_type = (data.get('group_type') or 'single').lower()  # 'single' or 'parlay'
         parlay_name = (data.get('parlay_name') or '').strip()
 
