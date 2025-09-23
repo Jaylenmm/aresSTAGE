@@ -8,6 +8,7 @@ from sqlalchemy import inspect, text
 from prediction_engine import PredictionEngine
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from utils.pricing import implied_prob as _implied_prob, ev_from_prob_and_odds as _ev_from_prob_and_odds
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -411,7 +412,7 @@ def api_search():
 
 @app.route('/api/picks/evaluate', methods=['POST'])
 def api_picks_evaluate():
-    """Evaluate a pick: return model probability, fair prob, EV, Kelly stake, and short reason."""
+    """Evaluate a pick: return model probability, implied prob (book), edge, EV, Kelly, and reason."""
     try:
         from services.probabilities import ml_probability, spread_cover_probability, total_over_under_probability
         from utils.pricing import implied_prob, ev_from_prob_and_odds, kelly_fraction
@@ -425,10 +426,12 @@ def api_picks_evaluate():
         price = data.get('price')
         g = Game.query.get(int(game_id)) if game_id else None
         result = {
-            'p_model': None,
-            'p_fair': None,
-            'ev': None,
-            'kelly': None,
+            'p_model': None,              # model probability
+            'implied_prob': None,         # book-implied from provided price
+            'edge': None,                 # p_model - implied_prob
+            'ev': None,                   # EV per $1 stake (fraction)
+            'ev_per_100': None,           # EV dollars per $100 stake
+            'kelly': None,                # Kelly fraction (capped)
             'reason': 'Informational only. Not betting advice.'
         }
         if not g:
@@ -438,21 +441,21 @@ def api_picks_evaluate():
             probs = ml_probability(g.home_team, g.away_team, sport, g.home_moneyline, g.away_moneyline)
             if team and g.home_team.lower() == (team or '').lower():
                 p_model = probs.get('home')
-                p_fair_other = probs.get('away')
                 implied = implied_prob(price) if price is not None else None
             else:
                 p_model = probs.get('away')
-                p_fair_other = probs.get('home')
                 implied = implied_prob(price) if price is not None else None
             result['p_model'] = p_model
-            result['p_fair'] = p_model
+            result['implied_prob'] = implied
+            result['edge'] = (p_model - implied) if (p_model is not None and implied is not None) else None
             if p_model is not None and price is not None:
                 ev = ev_from_prob_and_odds(p_model, float(price))
                 kelly = kelly_fraction(p_model, float(price))
                 result['ev'] = ev
+                result['ev_per_100'] = ev * 100.0
                 result['kelly'] = kelly
                 if implied is not None:
-                    result['reason'] = f"Fair p {p_model:.1%} vs price p {implied:.1%}. Edge {ev*100:.1f}%. Not advice."
+                    result['reason'] = f"We estimate {p_model:.1%} vs book {implied:.1%}, edge {(p_model-implied)*100:.1f}%, EV ${ev*100:.1f} per $100. Not advice."
         # Spread
         elif pick_type == 'spread':
             # line is the selected side line; home side baseline is g.spread
@@ -466,8 +469,12 @@ def api_picks_evaluate():
                 ev = ev_from_prob_and_odds(p_model, float(price))
                 kelly = kelly_fraction(p_model, float(price))
                 result['ev'] = ev
+                result['ev_per_100'] = ev * 100.0
                 result['kelly'] = kelly
-                result['reason'] = f"Cover prob {p_model:.1%} on line {line}. Edge {ev*100:.1f}%. Not advice."
+                imp = implied_prob(price)
+                result['implied_prob'] = imp
+                result['edge'] = (p_model - imp) if imp is not None else None
+                result['reason'] = f"Cover {p_model:.1%} vs book {imp:.1%}, edge {(p_model-imp)*100:.1f}%, EV ${ev*100:.1f} per $100. Not advice."
         # Total
         elif pick_type == 'total':
             probs = total_over_under_probability(g.total, sport=sport or g.sport)
@@ -478,9 +485,112 @@ def api_picks_evaluate():
                 ev = ev_from_prob_and_odds(p_model, float(price))
                 kelly = kelly_fraction(p_model, float(price))
                 result['ev'] = ev
+                result['ev_per_100'] = ev * 100.0
                 result['kelly'] = kelly
-                result['reason'] = f"Total line {g.total}. Neutral prior 50/50. Edge {ev*100:.1f}%. Not advice."
+                imp = implied_prob(price)
+                result['implied_prob'] = imp
+                result['edge'] = (p_model - imp) if imp is not None else None
+                result['reason'] = f"Total {g.total}. Prior 50/50 vs book {imp:.1%}, EV ${ev*100:.1f} per $100. Not advice."
         return jsonify({'success': True, 'result': result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/picks/suggest', methods=['GET'])
+def api_picks_suggest():
+    """
+    Suggest up to two highlighted picks for a game, evaluated by Edge then EV.
+    Query: sport, game_id
+    Response: { picks: [ {type, team, opponent, line, price, p_model, implied_prob, edge, ev, ev_per_100, kelly, source_book} ] }
+    """
+    try:
+        from services.probabilities import ml_probability, spread_cover_probability, total_over_under_probability
+        from utils.pricing import implied_prob, ev_from_prob_and_odds, kelly_fraction
+        from providers.odds_client import OddsClient
+        sport = (request.args.get('sport') or '').lower()
+        game_id = request.args.get('game_id')
+        g = Game.query.get(int(game_id)) if game_id else None
+        if not g:
+            return jsonify({'success': True, 'picks': []})
+
+        # Build candidate picks
+        candidates = []
+        # Gather best-line moneylines if possible
+        source_map = {'home': None, 'away': None}
+        home_ml = g.home_moneyline
+        away_ml = g.away_moneyline
+        try:
+            oc = OddsClient()
+            bms = oc.fetch_event_bookmakers(g.sport or sport, g.home_team, g.away_team)
+            best = oc.best_moneyline_prices(bms, g.home_team, g.away_team) if bms else {}
+            if best.get('home'):
+                home_ml, source_map['home'] = best['home'][0], best['home'][1]
+            if best.get('away'):
+                away_ml, source_map['away'] = best['away'][0], best['away'][1]
+        except Exception:
+            pass
+
+        # Moneyline candidates
+        if home_ml is not None or away_ml is not None:
+            probs = ml_probability(g.home_team, g.away_team, g.sport or sport, home_ml, away_ml)
+            if away_ml is not None:
+                p = probs.get('away')
+                imp = implied_prob(away_ml)
+                edge = (p - imp) if (p is not None and imp is not None) else None
+                ev = ev_from_prob_and_odds(p, away_ml) if (p is not None) else None
+                kelly = kelly_fraction(p, away_ml) if (p is not None) else None
+                candidates.append({'type':'moneyline','team':g.away_team,'opponent':g.home_team,'line':None,'price':away_ml,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':source_map['away']})
+            if home_ml is not None:
+                p = probs.get('home')
+                imp = implied_prob(home_ml)
+                edge = (p - imp) if (p is not None and imp is not None) else None
+                ev = ev_from_prob_and_odds(p, home_ml) if (p is not None) else None
+                kelly = kelly_fraction(p, home_ml) if (p is not None) else None
+                candidates.append({'type':'moneyline','team':g.home_team,'opponent':g.away_team,'line':None,'price':home_ml,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':source_map['home']})
+
+        # Spread candidates
+        if g.spread is not None:
+            probs = spread_cover_probability(g.spread, sport=g.sport or sport)
+            # Home
+            p = probs.get('home')
+            imp = implied_prob(-110)  # default juice assumption if price not provided
+            edge = (p - imp) if (p is not None and imp is not None) else None
+            ev = ev_from_prob_and_odds(p, -110) if (p is not None) else None
+            kelly = kelly_fraction(p, -110) if (p is not None) else None
+            candidates.append({'type':'spread','team':g.home_team,'opponent':g.away_team,'line':g.spread,'price':-110,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':g.bookmaker})
+            # Away line is negative
+            away_line = -g.spread
+            p = probs.get('away')
+            imp = implied_prob(-110)
+            edge = (p - imp) if (p is not None and imp is not None) else None
+            ev = ev_from_prob_and_odds(p, -110) if (p is not None) else None
+            kelly = kelly_fraction(p, -110) if (p is not None) else None
+            candidates.append({'type':'spread','team':g.away_team,'opponent':g.home_team,'line':away_line,'price':-110,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':g.bookmaker})
+
+        # Total candidates (use neutral probabilities)
+        if g.total is not None:
+            probs = total_over_under_probability(g.total, sport=g.sport or sport)
+            for side in ['over','under']:
+                p = probs.get(side)
+                imp = implied_prob(-110)
+                edge = (p - imp) if (p is not None and imp is not None) else None
+                ev = ev_from_prob_and_odds(p, -110) if (p is not None) else None
+                kelly = kelly_fraction(p, -110) if (p is not None) else None
+                candidates.append({'type':f'total_{side}','team':None,'opponent':None,'line':g.total,'price':-110,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':g.bookmaker})
+
+        # Rank: highest positive edge; if none positive, highest EV
+        def edge_key(c):
+            return c['edge'] if (c.get('edge') is not None) else float('-inf')
+        def ev_key(c):
+            return c['ev'] if (c.get('ev') is not None) else float('-inf')
+
+        positives = [c for c in candidates if (c.get('edge') is not None and c['edge'] > 0)]
+        if positives:
+            top = sorted(positives, key=edge_key, reverse=True)[:2]
+        else:
+            top = sorted(candidates, key=ev_key, reverse=True)[:2]
+
+        return jsonify({'success': True, 'picks': top})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -507,6 +617,7 @@ def api_check_bet_games():
                 'spread': g.spread,  # interpret as home spread
                 'total': g.total,
                 'bookmaker': g.bookmaker,
+                'book_note': 'best available' if g.bookmaker else None,
             })
         return jsonify({'success': True, 'games': cards})
     except Exception as e:

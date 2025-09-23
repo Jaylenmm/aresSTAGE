@@ -107,7 +107,7 @@ class SportsDataCollector:
         try:
             return self.sdio.fetch_upcoming_games('golf', days_ahead=self.lookahead_days)
         except Exception:
-            return []
+        return []
     
     def scrape_espn_games(self):
         """Backup web scraping method - not implemented"""
@@ -251,7 +251,7 @@ class SportsDataCollector:
                             all_games.extend(seeded)
             except Exception as e:
                 print(f"Per-sport fallback failed: {e}")
-
+        
         # Save to database
         if all_games:
             self.save_games_to_db(all_games)

@@ -244,41 +244,48 @@ function renderGameCards(games) {
     const picks = document.createElement('div');
     picks.className = 'pt-2 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2';
     const buttons = [];
-    // ML buttons
+    // Build static buttons first
     if (g.away_moneyline!==null && g.away_moneyline!==undefined)
       buttons.push({ label: `${toTitle(g.away_team)} ML ${g.away_moneyline>0?'+':''}${g.away_moneyline} (Away)`, payload: { type:'moneyline', team:g.away_team, opponent:g.home_team, price:g.away_moneyline } });
     if (g.home_moneyline!==null && g.home_moneyline!==undefined)
       buttons.push({ label: `${toTitle(g.home_team)} ML ${g.home_moneyline>0?'+':''}${g.home_moneyline} (Home)`, payload: { type:'moneyline', team:g.home_team, opponent:g.away_team, price:g.home_moneyline } });
-    // Spread buttons (home spread is g.spread; away is negative of that)
     if (g.spread!==null && g.spread!==undefined) {
-      buttons.push({ label: `${toTitle(g.home_team)} spread ${g.spread>0?'+':''}${g.spread} (Home)`, payload: { type:'spread', team:g.home_team, opponent:g.away_team, line:g.spread } });
       const awayLine = (g.spread!==null && g.spread!==undefined) ? (g.spread*-1) : null;
+      buttons.push({ label: `${toTitle(g.home_team)} spread ${g.spread>0?'+':''}${g.spread} (Home)`, payload: { type:'spread', team:g.home_team, opponent:g.away_team, line:g.spread } });
       buttons.push({ label: `${toTitle(g.away_team)} spread ${awayLine>0?'+':''}${awayLine} (Away)`, payload: { type:'spread', team:g.away_team, opponent:g.home_team, line:awayLine } });
     }
-    // Total buttons
     if (g.total!==null && g.total!==undefined) {
       buttons.push({ label: `Over ${g.total}`, payload: { type:'total', line:g.total } });
       buttons.push({ label: `Under ${g.total}`, payload: { type:'total', line:g.total } });
     }
-    // Assume first two with highest relevance: prefer spreads if available else ML; highlight them
-    const highlightSet = new Set();
-    const spreadButtons = buttons.filter(x=>x.payload.type==='spread');
-    if (spreadButtons.length) {
-      highlightSet.add(spreadButtons[0]);
-      if (spreadButtons[1]) highlightSet.add(spreadButtons[1]);
-    } else {
-      const mlButtons = buttons.filter(x=>x.payload.type==='moneyline');
-      if (mlButtons[0]) highlightSet.add(mlButtons[0]);
-    }
+
+    // Fetch suggested highlights from backend
+    let highlightSet = new Set();
+    try {
+      const sr = await fetch(`/api/picks/suggest?sport=${encodeURIComponent(g.sport||'')}&game_id=${encodeURIComponent(g.game_id)}`);
+      const sd = await sr.json();
+      if (sd && sd.success && Array.isArray(sd.picks)) {
+        // choose up to two; match by type/team/line when possible
+        for (const sp of sd.picks.slice(0,2)) {
+          const match = buttons.find(b => {
+            const p = b.payload||{};
+            if (sp.type.startsWith('total')) return p.type==='total' && p.line===sp.line;
+            if (sp.type==='spread') return p.type==='spread' && p.team===sp.team && p.line===sp.line;
+            if (sp.type==='moneyline') return p.type==='moneyline' && p.team===sp.team;
+            return false;
+          });
+          if (match) highlightSet.add(match);
+        }
+      }
+    } catch {}
+
     for (const b of buttons) {
       const btn = document.createElement('button');
       const hl = highlightSet.has(b) ? ' pick-highlight ' : '';
       btn.className = 'bg-white text-black rounded-xl border border-slate-300 px-3 py-2 text-sm text-left hover:bg-slate-50' + hl;
       // Attach quick EV estimate if price present
       let label = b.label;
-      if (b.payload && typeof b.payload.price === 'number') {
-        label += ' · Ares\' Picks';
-      }
+      if (highlightSet.has(b)) label += ' · Ares\' Picks';
       btn.textContent = label;
       btn.onclick = async () => {
         const payload = { ...b.payload, sport:g.sport, game_id:g.game_id, date:g.date };
@@ -286,10 +293,10 @@ function renderGameCards(games) {
           const r = await fetch('/api/picks/evaluate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
           const d = await r.json();
           if (d && d.success && d.result) {
-            const { p_model, ev, kelly, reason } = d.result;
+            const { p_model, implied_prob, edge, ev_per_100, kelly, reason } = d.result;
             const info = document.createElement('div');
             info.className = 'text-xs text-slate-600 mt-1';
-            info.textContent = `Ares' Picks: p=${p_model!==null? (p_model*100).toFixed(1)+'%':'-'}, EV=${ev!==null? (ev*100).toFixed(1)+'%':'-'}, stake≈${kelly!==null? (kelly*100).toFixed(1)+'%':'-'} · ${reason}`;
+            info.textContent = `Ares' Picks: p=${p_model!==null? (p_model*100).toFixed(1)+'%':'-'}, book=${implied_prob!==null? (implied_prob*100).toFixed(1)+'%':'-'}, edge=${edge!==null? (edge*100).toFixed(1)+'%':'-'}, EV$100=${ev_per_100!==null? ev_per_100.toFixed(1):'-'}, stake≈${kelly!==null? (kelly*100).toFixed(1)+'%':'-'} · ${reason}`;
             btn.after(info);
           }
         } catch {}
