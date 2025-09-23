@@ -66,9 +66,13 @@ function renderOptions(opts) {
   optionsDiv.innerHTML = '';
   sorted.forEach((o, idx) => {
     const card = document.createElement('div');
-    const highlight = idx === 0 ? ' ring-2 ring-orange-400 shadow-[0_0_20px_rgba(249,115,22,0.35)] ' : '';
-    card.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3' + highlight;
+    const isTop = idx === 0;
+    const highlightClass = isTop ? ' border-2 border-orange-500 ' : '';
+    const highlightStyle = isTop ? 'box-shadow: 0 0 0 4px rgba(249,115,22,0.45), 0 12px 40px rgba(249,115,22,0.55);' : '';
+    card.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 relative' + highlightClass;
+    if (highlightStyle) card.setAttribute('style', highlightStyle);
     card.innerHTML = `
+      ${isTop ? '<div class="absolute -top-2 -right-2 bg-orange-500 text-white text-xs px-2 py-1 rounded-lg shadow">Top pick</div>' : ''}
       <div class="text-xs uppercase tracking-wide text-slate-700">${o.sport || ''}</div>
       <div class="mt-1 font-semibold">${o.teams || (o.team ? (o.team + ' vs ' + (o.opponent || '')) : '')}</div>
       <div class="text-sm text-slate-700">${o.date ? new Date(o.date).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET' : ''}</div>
