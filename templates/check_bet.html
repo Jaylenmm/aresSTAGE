@@ -4,6 +4,17 @@
 <div class="space-y-4">
     <h1 class="text-xl font-bold text-white">Check your bet</h1>
 
+    <!-- Saved setups -->
+    <div class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3">
+        <div class="flex items-center justify-between">
+            <h2 class="text-base font-semibold">What you're cookin'</h2>
+            <button id="refresh-parlays" class="text-sm px-3 py-1 rounded-xl border border-slate-300">Refresh</button>
+        </div>
+        <div id="parlays" class="mt-3 space-y-3">
+            <div class="text-slate-600 text-sm">Nothing here. Search for your picks below!</div>
+        </div>
+    </div>
+
     <!-- Search -->
     <div class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3">
         <input id="search-input" type="text" placeholder="Search team or player" class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none" />
@@ -31,6 +42,8 @@ let debounceTimer;
 const input = document.getElementById('search-input');
 const suggestions = document.getElementById('suggestions');
 const optionsDiv = document.getElementById('bet-options');
+const parlaysDiv = document.getElementById('parlays');
+document.getElementById('refresh-parlays').addEventListener('click', loadParlays);
 
 input.addEventListener('input', () => {
   clearTimeout(debounceTimer);
@@ -83,7 +96,7 @@ function renderOptions(opts) {
     const highlightClass = isTop ? ' border-2 border-orange-500 animate-ring-pulse-orange ' : '';
     card.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 relative' + highlightClass;
     card.innerHTML = `
-      ${isTop ? '<div class="absolute -top-2 -right-2 bg-orange-500 text-white text-xs px-2 py-1 rounded-lg shadow">Top pick</div>' : ''}
+      ${isTop ? '<div class="absolute top-2 right-2 bg-orange-500 text-white text-xs px-2 py-1 rounded-lg shadow">Top pick</div>' : ''}
       <div class="text-xs uppercase tracking-wide text-slate-700">${(o.sport || '').toUpperCase()}</div>
       <div class="mt-1 font-semibold">${o.teams ? toTitle(o.teams) : (o.team ? (toTitle(o.team) + ' vs ' + toTitle(o.opponent || '')) : '')}</div>
       <div class="text-sm text-slate-700">${o.date ? new Date(o.date).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET' : ''}</div>
@@ -95,25 +108,88 @@ function renderOptions(opts) {
         ${o.reason ? `<div class="text-slate-700 mt-1">${o.reason}</div>` : ''}
       </div>
       <div class="mt-3">
-        <button class="w-full bg-black text-white rounded-xl py-2" onclick='saveBet(${JSON.stringify(o)})'>Save bet</button>
+        <button class="w-full bg-black text-white rounded-xl py-2" onclick='openSaveModal(${JSON.stringify(o)})'>Save bet</button>
       </div>
     `;
     optionsDiv.appendChild(card);
   });
 }
 
-async function saveBet(o) {
+// Save modal logic
+let pendingBet = null;
+function openSaveModal(o) {
+  pendingBet = o;
+  document.getElementById('save-modal').classList.remove('hidden');
+}
+function closeSaveModal() {
+  document.getElementById('save-modal').classList.add('hidden');
+  pendingBet = null;
+}
+async function confirmSaveBet() {
+  if (!pendingBet) return;
+  const isParlay = document.getElementById('opt-parlay').checked;
+  const group_type = isParlay ? 'parlay' : 'single';
+  let parlay_name = '';
+  if (isParlay) {
+    const sel = document.getElementById('existing-parlay');
+    const existing = sel.value;
+    const custom = document.getElementById('new-parlay-name').value.trim();
+    parlay_name = custom || existing;
+  }
   try {
+    const payload = { ...pendingBet, group_type, parlay_name };
     const res = await fetch('/api/bets/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(o)
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed');
-    alert('Bet saved');
+    closeSaveModal();
+    await loadParlays();
+    alert('Saved!');
   } catch (e) {
     alert('Error: ' + e.message);
+  }
+}
+
+async function loadParlays() {
+  try {
+    const res = await fetch('/api/parlays');
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed');
+    const list = data.parlays || [];
+    if (!list.length) {
+      parlaysDiv.innerHTML = '<div class="text-slate-600 text-sm">Nothing here. Search for your picks below!</div>';
+      return;
+    }
+    parlaysDiv.innerHTML = '';
+    for (const p of list) {
+      const wrap = document.createElement('div');
+      wrap.className = 'rounded-2xl border border-slate-200 p-3';
+      const header = document.createElement('div');
+      header.className = 'flex items-center justify-between';
+      header.innerHTML = `<div class="font-semibold">${p.name}</div><div class="text-xs text-slate-600 uppercase">${p.status}</div>`;
+      wrap.appendChild(header);
+      const bets = document.createElement('div');
+      bets.className = 'mt-2 space-y-2';
+      for (const b of p.bets) {
+        const row = document.createElement('div');
+        row.className = 'bg-white text-black rounded-xl border border-slate-200 p-2 flex items-center justify-between';
+        const left = document.createElement('div');
+        left.innerHTML = `<div class="text-xs uppercase text-slate-600">${(b.sport||'').toUpperCase()}</div><div class="font-medium">${toTitle(b.team||'')} vs ${toTitle(b.opponent||'')}</div><div class="text-xs text-slate-600">${b.date ? new Date(b.date).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET' : ''}</div>`;
+        const right = document.createElement('div');
+        right.className = 'text-right text-sm';
+        right.innerHTML = `${b.type ? `<div>${b.type}</div>` : ''}${(b.line!==null&&b.line!==undefined) ? `<div>Line: ${b.line}</div>` : ''}${(b.price!==null&&b.price!==undefined) ? `<div>Price: ${b.price}</div>` : ''}${(b.probability!==null&&b.probability!==undefined) ? `<div>Hit %: ${b.probability}</div>` : ''}`;
+        row.appendChild(left);
+        row.appendChild(right);
+        bets.appendChild(row);
+      }
+      wrap.appendChild(bets);
+      parlaysDiv.appendChild(wrap);
+    }
+  } catch (e) {
+    parlaysDiv.innerHTML = `<div class=\"text-red-500\">Error loading: ${e.message}</div>`;
   }
 }
 
@@ -126,6 +202,58 @@ async function saveBet(o) {
     selectEntity(s);
   }
 })();
+</script>
+<!-- Save Modal -->
+<div id="save-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+  <div class="bg-white text-black rounded-2xl border border-slate-200 shadow-lg w-full max-w-md p-4">
+    <h3 class="text-lg font-semibold mb-2">Add this to a parlay?</h3>
+    <p class="text-sm text-slate-700 mb-3">Choose Single to save alone, or add to an existing/new parlay. Up to 5 active setups.</p>
+    <div class="space-y-2">
+      <label class="flex items-center space-x-2"><input type="radio" name="save-type" id="opt-single" checked> <span>Single</span></label>
+      <label class="flex items-center space-x-2"><input type="radio" name="save-type" id="opt-parlay"> <span>Parlay</span></label>
+      <div id="parlay-controls" class="ml-6 space-y-2 hidden">
+        <div>
+          <label class="block text-sm text-slate-700">Existing parlay</label>
+          <select id="existing-parlay" class="w-full px-3 py-2 rounded-xl border border-slate-300"></select>
+        </div>
+        <div>
+          <label class="block text-sm text-slate-700">Or new parlay name</label>
+          <input id="new-parlay-name" class="w-full px-3 py-2 rounded-xl border border-slate-300" placeholder="e.g., Sunday Picks" />
+        </div>
+      </div>
+    </div>
+    <div class="mt-4 flex justify-end space-x-2">
+      <button class="px-4 py-2 rounded-xl border" onclick="closeSaveModal()">Cancel</button>
+      <button class="px-4 py-2 rounded-xl bg-black text-white" onclick="confirmSaveBet()">Save</button>
+    </div>
+  </div>
+</div>
+<script>
+// Toggle parlay controls
+function updateParlayControls() {
+  const show = document.getElementById('opt-parlay').checked;
+  document.getElementById('parlay-controls').classList.toggle('hidden', !show);
+}
+document.getElementById('opt-single').addEventListener('change', updateParlayControls);
+document.getElementById('opt-parlay').addEventListener('change', async () => {
+  updateParlayControls();
+  // load existing parlays into select
+  try {
+    const res = await fetch('/api/parlays');
+    const data = await res.json();
+    const sel = document.getElementById('existing-parlay');
+    sel.innerHTML = '';
+    (data.parlays||[]).forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+  } catch {}
+});
+updateParlayControls();
+// Initial load
+loadParlays();
 </script>
 {% endblock %}
 

@@ -238,6 +238,28 @@ class Prediction(db.Model):
     def __repr__(self):
         return f'<Prediction: {self.predicted_winner} (confidence: {self.confidence})>'
 
+class Parlay(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    status = db.Column(db.String(20), default='active')  # active/completed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class SavedBet(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    parlay_id = db.Column(db.Integer, db.ForeignKey('parlay.id'), nullable=False)
+    game_id = db.Column(db.Integer, db.ForeignKey('game.id'), nullable=True)
+    sport = db.Column(db.String(50), nullable=False)
+    team = db.Column(db.String(120), nullable=True)
+    opponent = db.Column(db.String(120), nullable=True)
+    bet_type = db.Column(db.String(50), nullable=False)  # moneyline/spread/total
+    line = db.Column(db.Float, nullable=True)
+    price = db.Column(db.Float, nullable=True)
+    probability = db.Column(db.Float, nullable=True)
+    event_date = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    parlay = db.relationship('Parlay', backref=db.backref('bets', lazy=True))
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
@@ -483,28 +505,100 @@ def api_save_bet():
         missing = [k for k in required if k not in data]
         if missing:
             return jsonify({'success': False, 'error': f'Missing fields: {", ".join(missing)}'}), 400
-        # Store as a Prediction row for now (lightweight persistence)
+        group_type = (data.get('group_type') or 'single').lower()  # 'single' or 'parlay'
+        parlay_name = (data.get('parlay_name') or '').strip()
+
+        # Resolve or create parlay
+        active_parlays = Parlay.query.filter_by(status='active').all()
+        if group_type == 'parlay':
+            if not parlay_name:
+                return jsonify({'success': False, 'error': 'parlay_name required'}), 400
+            parlay = Parlay.query.filter_by(name=parlay_name, status='active').first()
+            if not parlay:
+                # Enforce up to 5 active setups
+                if len(active_parlays) >= 5:
+                    return jsonify({'success': False, 'error': 'Maximum 5 active setups reached'}), 400
+                parlay = Parlay(name=parlay_name)
+                db.session.add(parlay)
+                db.session.flush()
+        else:  # single -> create a dedicated setup
+            # Reuse a single bucket named Single-# if under 5
+            # Prefer a parlay named 'Singles' if exists and <5 legs
+            parlay = Parlay.query.filter_by(name='Singles', status='active').first()
+            if not parlay:
+                if len(active_parlays) >= 5:
+                    return jsonify({'success': False, 'error': 'Maximum 5 active setups reached'}), 400
+                parlay = Parlay(name='Singles')
+                db.session.add(parlay)
+                db.session.flush()
+
         # Map to a game if provided
+        g = None
         game_id = data.get('game_id')
         if game_id:
             try:
                 g = Game.query.get(int(game_id))
             except Exception:
                 g = None
-        else:
-            g = None
-        pred = Prediction(
-            game_id=g.id if g else Game.query.order_by(Game.date.desc()).first().id if Game.query.first() else 0,
-            predicted_winner=f"{data.get('team')} ({data.get('type')})",
-            confidence=(float(data.get('probability'))/100.0) if data.get('probability') is not None else 0.5,
-            prediction_type=data.get('type'),
-            odds=float(data.get('price')) if data.get('price') is not None else None,
+
+        saved = SavedBet(
+            parlay_id=parlay.id,
+            game_id=g.id if g else None,
+            sport=data.get('sport') or (g.sport if g else ''),
+            team=data.get('team'),
+            opponent=data.get('opponent'),
+            bet_type=data.get('type'),
+            line=float(data.get('line')) if data.get('line') is not None else None,
+            price=float(data.get('price')) if data.get('price') is not None else None,
+            probability=float(data.get('probability')) if data.get('probability') is not None else None,
+            event_date=g.date if g else (datetime.fromisoformat(data.get('date')) if data.get('date') else None),
         )
-        db.session.add(pred)
+        db.session.add(saved)
         db.session.commit()
-        return jsonify({'success': True, 'id': pred.id})
+        return jsonify({'success': True, 'id': saved.id, 'parlay_id': parlay.id})
     except Exception as e:
         db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/parlays', methods=['GET'])
+def api_list_parlays():
+    try:
+        # Active parlays only; a parlay is completed when all linked games are completed
+        parlays = Parlay.query.filter_by(status='active').all()
+        result = []
+        for p in parlays:
+            bets = []
+            active_bets = 0
+            for b in p.bets:
+                # If linked to a game, consider active only if game not completed
+                is_active = True
+                if b.game_id:
+                    g = Game.query.get(b.game_id)
+                    if g and g.status == 'completed':
+                        is_active = False
+                if is_active:
+                    active_bets += 1
+                bets.append({
+                    'id': b.id,
+                    'game_id': b.game_id,
+                    'sport': b.sport,
+                    'team': b.team,
+                    'opponent': b.opponent,
+                    'type': b.bet_type,
+                    'line': b.line,
+                    'price': b.price,
+                    'probability': b.probability,
+                    'date': b.event_date.isoformat() if b.event_date else None,
+                    'active': is_active
+                })
+            # Auto-complete parlay if no active bets remain
+            if active_bets == 0 and bets:
+                p.status = 'completed'
+                db.session.commit()
+                continue
+            result.append({'id': p.id, 'name': p.name, 'status': p.status, 'bets': bets})
+        return jsonify({'success': True, 'parlays': result})
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/games', methods=['GET'])
