@@ -339,6 +339,31 @@ def home():
         preferred_order = ['nfl', 'nba', 'mlb', 'nhl', 'cfb', 'soccer', 'golf']
         sports = [s for s in preferred_order if s in distinct_sports] + [s for s in distinct_sports if s not in preferred_order]
 
+        # If a sport is selected, prepare featured props and news
+        featured_props = []
+        news_articles = []
+        if selected_sport:
+            try:
+                from providers.odds_client import OddsClient
+                oc = OddsClient()
+                props = oc.fetch_player_props_for_sport(selected_sport)
+                # Deduplicate by player_name, take first 4
+                seen = set()
+                for p in props:
+                    name = p.get('player_name')
+                    if not name or name in seen:
+                        continue
+                    featured_props.append(p)
+                    seen.add(name)
+                    if len(featured_props) >= 4:
+                        break
+            except Exception:
+                featured_props = []
+            try:
+                news_articles = fetch_espn_articles(selected_sport, limit=6)
+            except Exception:
+                news_articles = []
+
         return render_template('home.html',
                                sports=sports,
                                selected_sport=selected_sport,
@@ -346,7 +371,9 @@ def home():
                                sort_by=sort_by,
                                live_games=live_games,
                                featured_games=featured_games,
-                               upcoming_games=upcoming_games)
+                               upcoming_games=upcoming_games,
+                               featured_props=featured_props,
+                               news_articles=news_articles)
     except Exception as e:
         # Safe fallback: render home with minimal context
         try:
@@ -789,6 +816,38 @@ def provider_diagnostics():
         return jsonify({'success': True, 'summary': summary})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+def fetch_espn_articles(sport: str, limit: int = 6):
+    import requests
+    import xml.etree.ElementTree as ET
+    rss_map = {
+        'nfl': 'https://www.espn.com/espn/rss/nfl/news',
+        'nba': 'https://www.espn.com/espn/rss/nba/news',
+        'mlb': 'https://www.espn.com/espn/rss/mlb/news',
+        'nhl': 'https://www.espn.com/espn/rss/nhl/news',
+        'cfb': 'https://www.espn.com/espn/rss/ncf/news',
+        'soccer': 'https://www.espn.com/espn/rss/soccer/news',
+        'golf': 'https://www.espn.com/espn/rss/golf/news',
+    }
+    url = rss_map.get((sport or '').lower())
+    if not url:
+        return []
+    try:
+        resp = requests.get(url, timeout=6)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        items = []
+        for item in root.findall('.//item'):
+            title = (item.findtext('title') or '').strip()
+            link = (item.findtext('link') or '').strip()
+            pub = (item.findtext('pubDate') or '').strip()
+            if title and link:
+                items.append({'title': title, 'link': link, 'published': pub})
+            if len(items) >= limit:
+                break
+        return items
+    except Exception:
+        return []
 
 @app.route('/api/diagnostics/odds', methods=['GET'])
 def odds_diagnostics():

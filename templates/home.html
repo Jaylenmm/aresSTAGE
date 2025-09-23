@@ -2,23 +2,15 @@
 {% block title %}Ares AI – Home{% endblock %}
 {% block content %}
 <div class="space-y-4">
-    <!-- Filters: Sport + Range + Sort -->
+    <!-- Sport chooser -->
     <div class="flex overflow-x-auto space-x-2 items-center" style="-webkit-overflow-scrolling: touch;">
-        <div class="flex space-x-2">
-            <a href="/" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm whitespace-nowrap bg-white text-black {{ 'ring-1 ring-slate-300' if not selected_sport }}">All</a>
-            {% for s in sports %}
-            <a href="/?sport={{ s }}&range={{ date_range }}&sort={{ sort_by }}" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm whitespace-nowrap bg-white text-black {{ 'ring-1 ring-slate-300' if selected_sport==s }}">{{ s|upper }}</a>
-            {% endfor %}
-        </div>
-        <div class="ml-auto flex space-x-2">
-            <a href="/?sport={{ selected_sport or '' }}&range=today&sort={{ sort_by }}" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm bg-white text-black {{ 'ring-1 ring-slate-300' if date_range=='today' }}">Today</a>
-            <a href="/?sport={{ selected_sport or '' }}&range=3d&sort={{ sort_by }}" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm bg-white text-black {{ 'ring-1 ring-slate-300' if date_range=='3d' }}">3d</a>
-            <a href="/?sport={{ selected_sport or '' }}&range=7d&sort={{ sort_by }}" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm bg-white text-black {{ 'ring-1 ring-slate-300' if date_range=='7d' }}">7d</a>
-        </div>
+        {% for s in sports %}
+        <a href="/?sport={{ s }}" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm whitespace-nowrap bg-white text-black {{ 'ring-1 ring-slate-300' if selected_sport==s }}">{{ s|upper }}</a>
+        {% endfor %}
     </div>
 
     <!-- Live Carousel -->
-    {% if live_games %}
+    {% if selected_sport and live_games %}
     <div class="space-y-2">
         <h2 class="text-sm font-semibold text-white">Live Now</h2>
         <div class="flex overflow-x-auto space-x-3 pb-1">
@@ -43,7 +35,7 @@
     {% endif %}
 
     <!-- Featured Odds -->
-    {% if featured_games %}
+    {% if selected_sport and featured_games %}
     <div class="space-y-2">
         <h2 class="text-sm font-semibold text-white">Featured Odds</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -79,7 +71,12 @@
 
     <!-- Upcoming List -->
     <div class="space-y-2">
-        <h2 class="text-sm font-semibold text-white">Upcoming</h2>
+        <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-white">Upcoming</h2>
+            {% if selected_sport %}
+            <a href="/games?sport={{ selected_sport }}" class="text-xs text-slate-300 underline">See all</a>
+            {% endif %}
+        </div>
         <div class="space-y-2">
             {% for g in upcoming_games %}
             <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 flex items-center justify-between block">
@@ -97,6 +94,50 @@
             {% endfor %}
         </div>
     </div>
+
+    {% if selected_sport %}
+    <!-- Featured Player Props -->
+    {% if featured_props %}
+    <div class="space-y-2">
+        <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-white">Featured Player Props</h2>
+            <a href="/check-your-bet#players" class="text-xs text-slate-300 underline">See all</a>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {% for p in featured_props %}
+            <div class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3">
+                <div class="text-xs uppercase tracking-wide text-slate-700">{{ selected_sport|upper }}</div>
+                <div class="mt-1 font-semibold">{{ p.player_name }}</div>
+                <div class="text-sm text-slate-700">{{ p.market.replace('player_','')|replace('_',' ')|title }}: {{ p.line }}</div>
+                <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
+                    <a href="/check-your-bet#players" class="bg-white text-black rounded-xl border border-slate-300 px-3 py-2 text-center hover:bg-slate-50">Over {{ p.line }} ({{ p.over_price }})</a>
+                    <a href="/check-your-bet#players" class="bg-white text-black rounded-xl border border-slate-300 px-3 py-2 text-center hover:bg-slate-50">Under {{ p.line }} ({{ p.under_price }})</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ESPN News -->
+    <div class="space-y-2">
+        <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-white">Latest {{ selected_sport|upper }} News</h2>
+            <a href="https://www.espn.com/{{ selected_sport }}/" target="_blank" class="text-xs text-slate-300 underline">More on ESPN</a>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {% for n in news_articles %}
+            <a class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 hover:bg-slate-50" href="{{ n.link }}" target="_blank">
+                <div class="font-semibold">{{ n.title }}</div>
+                <div class="text-xs text-slate-600 mt-1">{{ n.published }}</div>
+            </a>
+            {% endfor %}
+            {% if not news_articles %}
+            <div class="text-slate-300">No news available.</div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
  
 </div>
 {% endblock %}
