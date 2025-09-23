@@ -251,7 +251,7 @@ class SportsDataCollector:
                             all_games.extend(seeded)
             except Exception as e:
                 print(f"Per-sport fallback failed: {e}")
-
+        
         # Save to database
         if all_games:
             self.save_games_to_db(all_games)

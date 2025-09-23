@@ -10,7 +10,7 @@ Env:
 import os
 import requests
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import pytz
 
 
@@ -44,6 +44,73 @@ class OddsClient:
 
     def _normalize(self, name: str) -> str:
         return (name or '').lower().strip()
+
+    # ---------- Event-level helpers for best-line evaluation ----------
+    def _fetch_events(self, sport: str) -> List[Dict]:
+        sport_key = self.SPORT_KEYS.get((sport or '').lower())
+        if not sport_key or not self.api_key:
+            return []
+        url = f"{self.BASE_URL}/sports/{sport_key}/odds"
+        params = {
+            'apiKey': self.api_key,
+            'regions': self.regions,
+            'markets': 'h2h,spreads,totals',
+            'oddsFormat': 'american',
+        }
+        for _ in range(3):
+            try:
+                resp = self.session.get(url, params=params, timeout=self.timeout_seconds)
+                resp.raise_for_status()
+                return resp.json() or []
+            except Exception:
+                continue
+        return []
+
+    def fetch_event_bookmakers(self, sport: str, home_team: str, away_team: str) -> List[Dict]:
+        """
+        Return the list of bookmaker objects for the matching event (home vs away).
+        Each bookmaker has shape: { key, title, last_update, markets: [...] }
+        """
+        try:
+            home_n = self._normalize(home_team)
+            away_n = self._normalize(away_team)
+            events = self._fetch_events(sport)
+            for ev in events:
+                if self._normalize(ev.get('home_team')) == home_n and self._normalize(ev.get('away_team')) == away_n:
+                    bms = ev.get('bookmakers') or []
+                    if self.bookmakers_filter:
+                        bms = [b for b in bms if b.get('key') in self.bookmakers_filter]
+                    return bms
+        except Exception:
+            pass
+        return []
+
+    def best_moneyline_prices(self, bookmakers: List[Dict], home_team: str, away_team: str) -> Dict[str, Optional[Tuple[float, str]]]:
+        """
+        For the given event bookmakers, find the best moneyline price for home and away.
+        Returns { 'home': (price, book_title), 'away': (price, book_title) } with None if missing.
+        """
+        from utils.pricing import american_to_decimal
+        best_home: Optional[Tuple[float, str]] = None
+        best_away: Optional[Tuple[float, str]] = None
+        for bm in bookmakers:
+            title = bm.get('title') or bm.get('key') or ''
+            for m in (bm.get('markets') or []):
+                if m.get('key') != 'h2h':
+                    continue
+                for outcome in (m.get('outcomes') or []):
+                    name = self._normalize(outcome.get('name'))
+                    price = outcome.get('price')
+                    if price is None:
+                        continue
+                    dec = american_to_decimal(float(price))
+                    if name == self._normalize(home_team):
+                        if best_home is None or american_to_decimal(best_home[0]) < dec:
+                            best_home = (float(price), title)
+                    elif name == self._normalize(away_team):
+                        if best_away is None or american_to_decimal(best_away[0]) < dec:
+                            best_away = (float(price), title)
+        return {'home': best_home, 'away': best_away}
 
     def fetch_odds_for_sport(self, sport: str) -> List[Dict]:
         """
