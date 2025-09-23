@@ -23,7 +23,7 @@
         <h2 class="text-sm font-semibold text-white">Live Now</h2>
         <div class="flex overflow-x-auto space-x-3 pb-1">
             {% for g in live_games %}
-            <div class="min-w-[260px] bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3">
+            <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="min-w-[260px] bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 block">
                 <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
                 <div class="mt-1 font-semibold">{{ g.away_team }} @ {{ g.home_team }}</div>
                 <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
@@ -36,7 +36,7 @@
                     </div>
                     {% endif %}
                 </div>
-            </div>
+            </a>
             {% endfor %}
         </div>
     </div>
@@ -48,7 +48,7 @@
         <h2 class="text-sm font-semibold text-white">Featured Odds</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {% for g in featured_games %}
-            <div class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3">
+            <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 block">
                 <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
                 <div class="mt-1 font-semibold">{{ g.away_team }} @ {{ g.home_team }}</div>
                 <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
@@ -71,7 +71,7 @@
                         <div>{{ g.bookmaker or '-' }}</div>
                     </div>
                 </div>
-            </div>
+            </a>
             {% endfor %}
         </div>
     </div>
@@ -82,7 +82,7 @@
         <h2 class="text-sm font-semibold text-white">Upcoming</h2>
         <div class="space-y-2">
             {% for g in upcoming_games %}
-            <div class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 flex items-center justify-between">
+            <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 flex items-center justify-between block">
                 <div>
                     <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
                     <div class="font-semibold">{{ g.away_team }} @ {{ g.home_team }}</div>
@@ -93,7 +93,7 @@
                     {% if g.total %}<div>Total: {{ g.total }}</div>{% endif %}
                     {% if g.bookmaker %}<div class="text-slate-600">{{ g.bookmaker }}</div>{% endif %}
                 </div>
-            </div>
+            </a>
             {% endfor %}
         </div>
     </div>
