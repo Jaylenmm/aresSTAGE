@@ -293,6 +293,7 @@ def home():
             base_query = base_query.filter(Game.sport == selected_sport)
         # Date range filter (assumes stored datetimes are US/Eastern naive)
         from utils.time_utils import now_est_naive
+        from datetime import datetime as _dt, timedelta
         now_est = now_est_naive()
         if date_range == '3d':
             end = now_est + timedelta(days=3)
@@ -998,7 +999,7 @@ if __name__ == '__main__':
     
     # Start background scheduler if enabled
     if data_scheduler:
-    data_scheduler.start()
+        data_scheduler.start()
     
     try:
         # Run the app
@@ -1007,8 +1008,8 @@ if __name__ == '__main__':
         app.run(debug=debug, host='0.0.0.0', port=port)
     except KeyboardInterrupt:
         if data_scheduler:
-        data_scheduler.stop()
+            data_scheduler.stop()
     except Exception as e:
         if data_scheduler:
-        data_scheduler.stop()
+            data_scheduler.stop()
         raise
