@@ -323,15 +323,37 @@ def home():
             upcoming_games.sort(key=lambda g: g.date)
         upcoming_games = upcoming_games[:50]
 
-        # Featured: games with betting info
-        featured_query = Game.query.filter(
-            Game.status.in_(['upcoming', 'live'])
-        )
-        if selected_sport:
-            featured_query = featured_query.filter(Game.sport == selected_sport)
-        featured_games = featured_query.filter(
-            db.or_(Game.spread.isnot(None), Game.total.isnot(None), Game.home_moneyline.isnot(None), Game.away_moneyline.isnot(None))
-        ).order_by(Game.date.asc()).limit(12).all()
+        # Featured: prioritize upcoming from now (ET) with betting info; fill from upcoming if needed
+        featured_games = []
+        try:
+            # Base upcoming window
+            upcoming_q = Game.query.filter(
+                Game.status.in_(['upcoming', 'live']),
+                Game.date >= now_est
+            )
+            if selected_sport:
+                upcoming_q = upcoming_q.filter(Game.sport == selected_sport)
+            # With betting info first
+            with_bets = upcoming_q.filter(
+                db.or_(
+                    Game.spread.isnot(None), Game.total.isnot(None),
+                    Game.home_moneyline.isnot(None), Game.away_moneyline.isnot(None)
+                )
+            ).order_by(Game.date.asc()).limit(8).all()
+            featured_games.extend(with_bets)
+            # Fill to 4 if not enough
+            if len(featured_games) < 4:
+                need = 4 - len(featured_games)
+                fillers = upcoming_q.order_by(Game.date.asc()).limit(need).all()
+                # Avoid duplicates
+                seen_ids = {g.id for g in featured_games}
+                for g in fillers:
+                    if g.id not in seen_ids:
+                        featured_games.append(g)
+            # Clamp to 4
+            featured_games = featured_games[:4]
+        except Exception:
+            featured_games = []
 
         # Available sports for quick filters
         distinct_sports = [row[0] for row in db.session.query(Game.sport).distinct().all()]
