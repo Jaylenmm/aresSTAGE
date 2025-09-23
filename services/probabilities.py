@@ -13,9 +13,9 @@ def ml_probability(home_team: str, away_team: str, sport: str, home_ml: Optional
     ph = implied_prob(home_ml)
     pa = implied_prob(away_ml)
     ph_fair, pa_fair = remove_vig_two_way(ph, pa)
-    # Simple team strength prior (placeholder; replace with real ratings)
-    # Use name-based heuristic: longer-name home teams slightly boosted (placeholder)
-    strength_delta = (len(home_team or '') - len(away_team or '')) / 50.0
+    # Team strength prior via PlayerAnalyzer (simple heuristic for now)
+    from services.team_strength import strength_delta as _sd
+    strength_delta = _sd(sport, home_team, away_team) - 0.5
     slope = ML_STRENGTH_SLOPE.get(sport, 2.0)
     prior_home = 1.0 / (1.0 + exp(-slope * strength_delta))
     w = ML_MARKET_WEIGHT.get(sport, 0.9)
