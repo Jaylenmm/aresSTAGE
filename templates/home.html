@@ -10,34 +10,15 @@
     </div>
 
     <!-- Live Carousel -->
-    {% if selected_sport and live_games %}
-    <div class="space-y-2">
-        <h2 class="text-sm font-semibold text-white">Live Now</h2>
-        <div class="flex overflow-x-auto space-x-3 pb-1">
-            {% for g in live_games %}
-            <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="min-w-[260px] bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 block">
-                <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
-                <div class="mt-1 font-semibold">{{ g.away_team|title }} @ {{ g.home_team|title }}</div>
-                <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
-                <div class="mt-2 flex items-center justify-between text-sm">
-                    <div>Score: {{ g.away_score }} - {{ g.home_score }}</div>
-                    {% if g.spread or g.total or g.home_moneyline or g.away_moneyline %}
-                    <div class="text-right">
-                        {% if g.spread %}<div>Spread: {{ g.spread }}</div>{% endif %}
-                        {% if g.total %}<div>Total: {{ g.total }}</div>{% endif %}
-                    </div>
-                    {% endif %}
-                </div>
-            </a>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
+    
 
     <!-- Featured Odds -->
-    {% if selected_sport and featured_games %}
+    {% if selected_sport %}
     <div class="space-y-2">
-        <h2 class="text-sm font-semibold text-white">Featured Odds</h2>
+        <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-white">Featured Upcoming Games</h2>
+            <a href="/games?sport={{ selected_sport }}" class="text-xs text-slate-300 underline">See all</a>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {% for g in featured_games %}
             <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 block">
@@ -65,35 +46,15 @@
                 </div>
             </a>
             {% endfor %}
+            {% if not featured_games %}
+            <div class="text-slate-300">No upcoming games found.</div>
+            {% endif %}
         </div>
     </div>
     {% endif %}
 
     <!-- Upcoming List -->
-    <div class="space-y-2">
-        <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-white">Upcoming</h2>
-            {% if selected_sport %}
-            <a href="/games?sport={{ selected_sport }}" class="text-xs text-slate-300 underline">See all</a>
-            {% endif %}
-        </div>
-        <div class="space-y-2">
-            {% for g in upcoming_games %}
-            <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 flex items-center justify-between block">
-                <div>
-                    <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
-                    <div class="font-semibold">{{ g.away_team|title }} @ {{ g.home_team|title }}</div>
-                    <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
-                </div>
-                <div class="text-right text-sm">
-                    {% if g.spread %}<div>Spread: {{ g.spread }}</div>{% endif %}
-                    {% if g.total %}<div>Total: {{ g.total }}</div>{% endif %}
-                    {% if g.bookmaker %}<div class="text-slate-600">{{ g.bookmaker }}</div>{% endif %}
-                </div>
-            </a>
-            {% endfor %}
-        </div>
-    </div>
+    
 
     {% if selected_sport %}
     <!-- Featured Player Props -->

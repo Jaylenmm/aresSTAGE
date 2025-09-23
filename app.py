@@ -327,9 +327,12 @@ def home():
         featured_games = []
         try:
             # Base upcoming window
+            from datetime import timedelta as _td
+            window_end = now_est + _td(days=7)
             upcoming_q = Game.query.filter(
                 Game.status == 'upcoming',
-                Game.date >= now_est
+                Game.date >= now_est,
+                Game.date <= window_end
             )
             if selected_sport:
                 upcoming_q = upcoming_q.filter(Game.sport == selected_sport)
