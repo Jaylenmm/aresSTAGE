@@ -395,6 +395,34 @@ def api_search():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/check_bet_games', methods=['GET'])
+def api_check_bet_games():
+    """Return normalized game cards with ML, spread, total for a team query."""
+    try:
+        q = (request.args.get('q') or '').strip().lower()
+        if not q:
+            return jsonify({'success': True, 'games': []})
+        games = Game.query.filter(Game.status.in_(['upcoming', 'live']))\
+            .filter(db.or_(Game.home_team.ilike(f"%{q}%"), Game.away_team.ilike(f"%{q}%")))\
+            .order_by(Game.date.asc()).limit(20).all()
+        cards = []
+        for g in games:
+            cards.append({
+                'game_id': g.id,
+                'sport': g.sport,
+                'date': g.date.isoformat(),
+                'home_team': g.home_team,
+                'away_team': g.away_team,
+                'home_moneyline': g.home_moneyline,
+                'away_moneyline': g.away_moneyline,
+                'spread': g.spread,  # interpret as home spread
+                'total': g.total,
+                'bookmaker': g.bookmaker,
+            })
+        return jsonify({'success': True, 'games': cards})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/check_bet_options', methods=['GET'])
 def api_check_bet_options():
     """Given an entity (team), return available bets with probabilities and reasons."""
@@ -597,6 +625,28 @@ def api_list_parlays():
             result.append({'id': p.id, 'name': p.name, 'status': p.status, 'bets': bets})
         return jsonify({'success': True, 'parlays': result})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/bets/delete', methods=['POST'])
+def api_delete_bet():
+    try:
+        data = request.get_json() or {}
+        bet_id = data.get('id')
+        if not bet_id:
+            return jsonify({'success': False, 'error': 'Missing id'}), 400
+        bet = SavedBet.query.get(int(bet_id))
+        if not bet:
+            return jsonify({'success': False, 'error': 'Not found'}), 404
+        parlay = bet.parlay
+        db.session.delete(bet)
+        db.session.commit()
+        # Optionally mark parlay completed if empty
+        if parlay and not parlay.bets:
+            parlay.status = 'completed'
+            db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/games', methods=['GET'])
