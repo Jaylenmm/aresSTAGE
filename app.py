@@ -395,9 +395,16 @@ def check_your_bet():
 def api_search():
     """Autosuggest teams from upcoming/live games (players TBD)"""
     try:
-        q = (request.args.get('q') or '').strip().lower()
+        q = (request.args.get('q') or request.args.get('s') or '').strip().lower()
         if not q:
-            return jsonify([])
+            # Return a small set of upcoming team names to help user start
+            games = Game.query.filter(Game.status.in_(['upcoming', 'live']))\
+                .order_by(Game.date.asc()).limit(10).all()
+            names = []
+            for g in games:
+                if g.home_team not in names: names.append(g.home_team)
+                if g.away_team not in names: names.append(g.away_team)
+            return jsonify([{'type':'team','name': n} for n in names])
         games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).all()
         suggestions = set()
         for g in games:
@@ -598,16 +605,29 @@ def api_picks_suggest():
 def api_check_bet_games():
     """Return normalized game cards with ML, spread, total for a team query."""
     try:
-        q = (request.args.get('q') or '').strip().lower()
-        if not q:
-            return jsonify({'success': True, 'games': []})
-        games = Game.query.filter(Game.status.in_(['upcoming', 'live']))\
-            .filter(db.or_(Game.home_team.ilike(f"%{q}%"), Game.away_team.ilike(f"%{q}%")))\
-            .order_by(Game.date.asc()).limit(20).all()
+        # Accept q (search) or s (selected team) params
+        raw = (request.args.get('q') or request.args.get('s') or '').strip()
+        q = raw.lower()
+        base_q = Game.query.filter(Game.status.in_(['upcoming', 'live']))
+        games = []
+        if q:
+            # Primary: substring match on team names (case-insensitive)
+            games = base_q\
+                .filter(db.or_(Game.home_team.ilike(f"%{q}%"), Game.away_team.ilike(f"%{q}%")))\
+                .order_by(Game.date.asc()).limit(20).all()
+            # Fallback: try exact match ignoring case if none found
+            if not games:
+                games = base_q\
+                    .filter(db.or_(Game.home_team.ilike(q), Game.away_team.ilike(q)))\
+                    .order_by(Game.date.asc()).limit(20).all()
+        # Final fallback: show next upcoming games to avoid empty UI
+        if not games:
+            games = base_q.order_by(Game.date.asc()).limit(10).all()
         cards = []
         for g in games:
             cards.append({
                 'game_id': g.id,
+                'id': g.id,
                 'sport': g.sport,
                 'date': g.date.isoformat(),
                 'home_team': g.home_team,

@@ -409,6 +409,15 @@ async function loadParlays() {
   if (s) {
     input.value = s;
     selectEntity(s);
+  } else {
+    // Auto-load some upcoming games to avoid empty screen on first load
+    optionsDiv.innerHTML = '<div class="text-slate-300">Loading upcoming games...</div>';
+    try {
+      const res = await fetch('/api/check_bet_games');
+      const data = await res.json();
+      if (data && data.success) renderGameCards(data.games||[]);
+      else optionsDiv.innerHTML = '<div class="text-slate-300">No games found.</div>';
+    } catch { optionsDiv.innerHTML = '<div class="text-slate-300">No games found.</div>'; }
   }
 })();
 </script>
