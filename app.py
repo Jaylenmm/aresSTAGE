@@ -11,6 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 # Initialize Flask app
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24))
 
 # Database configuration
 basedir = os.path.abspath(os.path.dirname(__file__))
