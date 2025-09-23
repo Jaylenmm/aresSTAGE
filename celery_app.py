@@ -4,6 +4,8 @@ Celery configuration for Ares AI background tasks
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_ready
+import threading
 import os
 
 # Initialize Celery
@@ -94,3 +96,14 @@ def refresh_odds_task():
         return {'success': True, 'message': 'Odds refreshed'}
     except Exception as e:
         return {'success': False, 'error': str(e)}
+
+# Run one full collection shortly after the worker starts
+@worker_ready.connect
+def run_collect_on_boot(sender, **kwargs):
+    def _trigger():
+        try:
+            collect_sports_data_task.delay()
+        except Exception:
+            pass
+    # small delay to allow app boot and DB ready
+    threading.Timer(5.0, _trigger).start()
