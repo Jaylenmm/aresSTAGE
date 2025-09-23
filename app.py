@@ -119,6 +119,23 @@ def ensure_game_schema():
                 ddl_statements.append("ALTER TABLE game ADD COLUMN bookmaker VARCHAR(100)")
             if 'odds_last_updated' not in columns:
                 ddl_statements.append("ALTER TABLE game ADD COLUMN odds_last_updated TIMESTAMP")
+            # SavedBet metric columns runtime-migration (SQLite-friendly best effort)
+            try:
+                sb_columns = {col['name'] for col in inspector.get_columns('saved_bet')}
+            except Exception:
+                sb_columns = set()
+            if 'p_model' not in sb_columns:
+                ddl_statements.append("ALTER TABLE saved_bet ADD COLUMN p_model FLOAT")
+            if 'implied_prob' not in sb_columns:
+                ddl_statements.append("ALTER TABLE saved_bet ADD COLUMN implied_prob FLOAT")
+            if 'edge' not in sb_columns:
+                ddl_statements.append("ALTER TABLE saved_bet ADD COLUMN edge FLOAT")
+            if 'ev' not in sb_columns:
+                ddl_statements.append("ALTER TABLE saved_bet ADD COLUMN ev FLOAT")
+            if 'ev_per_100' not in sb_columns:
+                ddl_statements.append("ALTER TABLE saved_bet ADD COLUMN ev_per_100 FLOAT")
+            if 'kelly' not in sb_columns:
+                ddl_statements.append("ALTER TABLE saved_bet ADD COLUMN kelly FLOAT")
             if ddl_statements:
                 try:
                     with engine.begin() as conn:
@@ -257,6 +274,13 @@ class SavedBet(db.Model):
     price = db.Column(db.Float, nullable=True)
     probability = db.Column(db.Float, nullable=True)
     event_date = db.Column(db.DateTime, nullable=True)
+    # Stored Ares metrics at save time (immutable snapshot)
+    p_model = db.Column(db.Float, nullable=True)
+    implied_prob = db.Column(db.Float, nullable=True)
+    edge = db.Column(db.Float, nullable=True)
+    ev = db.Column(db.Float, nullable=True)
+    ev_per_100 = db.Column(db.Float, nullable=True)
+    kelly = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     parlay = db.relationship('Parlay', backref=db.backref('bets', lazy=True))
@@ -415,7 +439,7 @@ def api_picks_evaluate():
     """Evaluate a pick: return model probability, implied prob (book), edge, EV, Kelly, and reason."""
     try:
         from services.probabilities import ml_probability, spread_cover_probability, total_over_under_probability
-        from utils.pricing import implied_prob, ev_from_prob_and_odds, kelly_fraction
+        from utils.pricing import implied_prob, ev_from_prob_and_odds, kelly_fraction, remove_vig_two_way
         data = request.get_json() or {}
         pick_type = (data.get('type') or '').lower()
         sport = (data.get('sport') or '').lower()
@@ -448,6 +472,13 @@ def api_picks_evaluate():
             result['p_model'] = p_model
             result['implied_prob'] = implied
             result['edge'] = (p_model - implied) if (p_model is not None and implied is not None) else None
+            # Also include vig-free baseline for two-way market if both ML prices known
+            if g.home_moneyline is not None and g.away_moneyline is not None:
+                ph = implied_prob(g.home_moneyline)
+                pa = implied_prob(g.away_moneyline)
+                ph_fair, pa_fair = remove_vig_two_way(ph, pa)
+                result['vig_free_home'] = ph_fair
+                result['vig_free_away'] = pa_fair
             if p_model is not None and price is not None:
                 ev = ev_from_prob_and_odds(p_model, float(price))
                 kelly = kelly_fraction(p_model, float(price))
@@ -527,8 +558,12 @@ def api_picks_suggest():
                 home_ml, source_map['home'] = best['home'][0], best['home'][1]
             if best.get('away'):
                 away_ml, source_map['away'] = best['away'][0], best['away'][1]
+            # For spreads and totals: get best prices at the posted points
+            best_sp = oc.best_spread_prices(bms, g.home_team, g.away_team, g.spread, (-g.spread if g.spread is not None else None)) if (bms and g.spread is not None) else {}
+            best_tot = oc.best_total_prices(bms, g.total) if (bms and g.total is not None) else {}
         except Exception:
-            pass
+            best_sp, best_tot = {}, {}
+        
 
         # Moneyline candidates
         if home_ml is not None or away_ml is not None:
@@ -553,30 +588,34 @@ def api_picks_suggest():
             probs = spread_cover_probability(g.spread, sport=g.sport or sport)
             # Home
             p = probs.get('home')
-            imp = implied_prob(-110)  # default juice assumption if price not provided
+            home_price = (best_sp.get('home')[0] if best_sp.get('home') else -110)
+            imp = implied_prob(home_price)
             edge = (p - imp) if (p is not None and imp is not None) else None
-            ev = ev_from_prob_and_odds(p, -110) if (p is not None) else None
-            kelly = kelly_fraction(p, -110) if (p is not None) else None
-            candidates.append({'type':'spread','team':g.home_team,'opponent':g.away_team,'line':g.spread,'price':-110,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':g.bookmaker})
+            ev = ev_from_prob_and_odds(p, home_price) if (p is not None) else None
+            kelly = kelly_fraction(p, home_price) if (p is not None) else None
+            candidates.append({'type':'spread','team':g.home_team,'opponent':g.away_team,'line':g.spread,'price':home_price,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':(best_sp.get('home')[1] if best_sp.get('home') else g.bookmaker)})
             # Away line is negative
             away_line = -g.spread
             p = probs.get('away')
-            imp = implied_prob(-110)
+            away_price = (best_sp.get('away')[0] if best_sp.get('away') else -110)
+            imp = implied_prob(away_price)
             edge = (p - imp) if (p is not None and imp is not None) else None
-            ev = ev_from_prob_and_odds(p, -110) if (p is not None) else None
-            kelly = kelly_fraction(p, -110) if (p is not None) else None
-            candidates.append({'type':'spread','team':g.away_team,'opponent':g.home_team,'line':away_line,'price':-110,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':g.bookmaker})
+            ev = ev_from_prob_and_odds(p, away_price) if (p is not None) else None
+            kelly = kelly_fraction(p, away_price) if (p is not None) else None
+            candidates.append({'type':'spread','team':g.away_team,'opponent':g.home_team,'line':away_line,'price':away_price,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':(best_sp.get('away')[1] if best_sp.get('away') else g.bookmaker)})
 
         # Total candidates (use neutral probabilities)
         if g.total is not None:
             probs = total_over_under_probability(g.total, sport=g.sport or sport)
             for side in ['over','under']:
                 p = probs.get(side)
-                imp = implied_prob(-110)
+                side_best = best_tot.get(side) if best_tot else None
+                price = side_best[0] if side_best else -110
+                imp = implied_prob(price)
                 edge = (p - imp) if (p is not None and imp is not None) else None
-                ev = ev_from_prob_and_odds(p, -110) if (p is not None) else None
-                kelly = kelly_fraction(p, -110) if (p is not None) else None
-                candidates.append({'type':f'total_{side}','team':None,'opponent':None,'line':g.total,'price':-110,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':g.bookmaker})
+                ev = ev_from_prob_and_odds(p, price) if (p is not None) else None
+                kelly = kelly_fraction(p, price) if (p is not None) else None
+                candidates.append({'type':f'total_{side}','team':None,'opponent':None,'line':g.total,'price':price,'p_model':p,'implied_prob':imp,'edge':edge,'ev':ev,'ev_per_100':(ev*100.0 if ev is not None else None),'kelly':kelly,'source_book':(side_best[1] if side_best else g.bookmaker)})
 
         # Rank: highest positive edge; if none positive, highest EV
         def edge_key(c):
@@ -590,7 +629,9 @@ def api_picks_suggest():
         else:
             top = sorted(candidates, key=ev_key, reverse=True)[:2]
 
-        return jsonify({'success': True, 'picks': top})
+        # Also return a ranked list for UI sorting needs
+        ranked = sorted([c for c in candidates if c.get('ev') is not None], key=ev_key, reverse=True)
+        return jsonify({'success': True, 'picks': top, 'ranked': ranked})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -801,6 +842,38 @@ def api_save_bet():
             except Exception:
                 g = None
 
+        # Compute Ares metrics at save time (only for supported bet types)
+        p_model = None
+        implied = None
+        edge = None
+        ev = None
+        ev_per_100 = None
+        kelly = None
+        try:
+            from utils.pricing import implied_prob, ev_from_prob_and_odds, kelly_fraction
+            from services.probabilities import ml_probability, spread_cover_probability, total_over_under_probability
+            btype = (data.get('type') or '').lower()
+            price = float(data.get('price')) if data.get('price') is not None else None
+            if g and btype == 'moneyline' and price is not None:
+                probs = ml_probability(g.home_team, g.away_team, g.sport, g.home_moneyline, g.away_moneyline)
+                team_l = (data.get('team') or '').lower()
+                p_model = probs.get('home') if g.home_team.lower() == team_l else probs.get('away')
+            elif g and btype == 'spread' and data.get('line') is not None:
+                probs = spread_cover_probability(g.spread, sport=g.sport)
+                team_l = (data.get('team') or '').lower()
+                p_model = probs.get('home') if g.home_team.lower() == team_l else probs.get('away')
+            elif g and btype.startswith('total') and data.get('line') is not None:
+                probs = total_over_under_probability(g.total, sport=g.sport)
+                p_model = probs.get('over') if 'over' in btype else probs.get('under')
+            if p_model is not None and price is not None:
+                implied = implied_prob(price)
+                edge = p_model - implied if implied is not None else None
+                ev = ev_from_prob_and_odds(p_model, price)
+                ev_per_100 = ev * 100.0
+                kelly = kelly_fraction(p_model, price)
+        except Exception:
+            pass
+
         saved = SavedBet(
             parlay_id=parlay.id,
             game_id=g.id if g else None,
@@ -812,6 +885,12 @@ def api_save_bet():
             price=float(data.get('price')) if data.get('price') is not None else None,
             probability=float(data.get('probability')) if data.get('probability') is not None else None,
             event_date=g.date if g else (datetime.fromisoformat(data.get('date')) if data.get('date') else None),
+            p_model=p_model,
+            implied_prob=implied,
+            edge=edge,
+            ev=ev,
+            ev_per_100=ev_per_100,
+            kelly=kelly,
         )
         db.session.add(saved)
         db.session.commit()
@@ -849,6 +928,12 @@ def api_list_parlays():
                     'price': b.price,
                     'probability': b.probability,
                     'date': b.event_date.isoformat() if b.event_date else None,
+                    'p_model': b.p_model,
+                    'implied_prob': b.implied_prob,
+                    'edge': b.edge,
+                    'ev': b.ev,
+                    'ev_per_100': b.ev_per_100,
+                    'kelly': b.kelly,
                     'active': is_active
                 })
             # Auto-complete parlay if no active bets remain

@@ -112,6 +112,82 @@ class OddsClient:
                             best_away = (float(price), title)
         return {'home': best_home, 'away': best_away}
 
+    def best_spread_prices(self, bookmakers: List[Dict], home_team: str, away_team: str, home_line: Optional[float], away_line: Optional[float]) -> Dict[str, Optional[Tuple[float, str]]]:
+        """
+        For a specific spread point (home_line for home, away_line for away), find best price across books.
+        Returns keys 'home' and 'away' with (price, book_title) or None if not found.
+        """
+        def isclose(a: float, b: float) -> bool:
+            try:
+                return abs(float(a) - float(b)) < 1e-6
+            except Exception:
+                return False
+        best_home: Optional[Tuple[float, str]] = None
+        best_away: Optional[Tuple[float, str]] = None
+        for bm in bookmakers:
+            title = bm.get('title') or bm.get('key') or ''
+            for m in (bm.get('markets') or []):
+                if m.get('key') != 'spreads':
+                    continue
+                for outcome in (m.get('outcomes') or []):
+                    try:
+                        name = self._normalize(outcome.get('name'))
+                        point = outcome.get('point')
+                        price = outcome.get('price')
+                        if price is None or point is None:
+                            continue
+                        point = float(point)
+                        price = float(price)
+                    except Exception:
+                        continue
+                    if name == self._normalize(home_team) and home_line is not None and isclose(point, float(home_line)):
+                        if best_home is None or american_to_decimal(best_home[0]) < american_to_decimal(price):
+                            best_home = (price, title)
+                    if name == self._normalize(away_team) and away_line is not None and isclose(point, float(away_line)):
+                        if best_away is None or american_to_decimal(best_away[0]) < american_to_decimal(price):
+                            best_away = (price, title)
+        return {'home': best_home, 'away': best_away}
+
+    def best_total_prices(self, bookmakers: List[Dict], point: Optional[float]) -> Dict[str, Optional[Tuple[float, str]]]:
+        """
+        For a specific total point, find best Over and Under prices across books at that exact point.
+        Returns { 'over': (price, title), 'under': (price, title) }.
+        """
+        def isclose(a: float, b: float) -> bool:
+            try:
+                return abs(float(a) - float(b)) < 1e-6
+            except Exception:
+                return False
+        best_over: Optional[Tuple[float, str]] = None
+        best_under: Optional[Tuple[float, str]] = None
+        if point is None:
+            return {'over': None, 'under': None}
+        for bm in bookmakers:
+            title = bm.get('title') or bm.get('key') or ''
+            for m in (bm.get('markets') or []):
+                if m.get('key') != 'totals':
+                    continue
+                for outcome in (m.get('outcomes') or []):
+                    name = (outcome.get('name') or '').lower()
+                    opoint = outcome.get('point')
+                    price = outcome.get('price')
+                    try:
+                        if opoint is None or price is None:
+                            continue
+                        opoint = float(opoint)
+                        price = float(price)
+                    except Exception:
+                        continue
+                    if not isclose(opoint, float(point)):
+                        continue
+                    if name == 'over':
+                        if best_over is None or american_to_decimal(best_over[0]) < american_to_decimal(price):
+                            best_over = (price, title)
+                    elif name == 'under':
+                        if best_under is None or american_to_decimal(best_under[0]) < american_to_decimal(price):
+                            best_under = (price, title)
+        return {'over': best_over, 'under': best_under}
+
     def fetch_odds_for_sport(self, sport: str) -> List[Dict]:
         """
         Fetch aggregated odds per event for a sport. Returns list of dicts with
