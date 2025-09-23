@@ -124,43 +124,44 @@ function renderGameCards(games) {
   optionsDiv.innerHTML = '';
   for (const g of games) {
     const card = document.createElement('div');
-    card.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 space-y-2';
-    const title = document.createElement('div');
-    const homeML = (g.home_moneyline!==null && g.home_moneyline!==undefined) ? `(${g.home_moneyline})` : '';
-    const awayML = (g.away_moneyline!==null && g.away_moneyline!==undefined) ? `(${g.away_moneyline})` : '';
-    title.className = 'font-semibold';
-    title.textContent = `${toTitle(g.away_team)} ${awayML} @ ${toTitle(g.home_team)} ${homeML}`;
-    const sub = document.createElement('div');
-    sub.className = 'text-sm text-slate-700';
-    sub.textContent = `${new Date(g.date).toLocaleString('en-US', { timeZone: 'America/New_York' })} ET · ${g.sport.toUpperCase()}${g.bookmaker ? ' · ' + g.bookmaker : ''}`;
-    card.appendChild(title);
-    card.appendChild(sub);
-    if (g.spread!==null && g.spread!==undefined) {
-      const spread = document.createElement('div');
-      spread.className = 'text-sm';
-      spread.textContent = `Spread: ${g.spread}`;
-      card.appendChild(spread);
-    }
-    if (g.total!==null && g.total!==undefined) {
-      const total = document.createElement('div');
-      total.className = 'text-sm';
-      total.textContent = `Total: ${g.total}`;
-      card.appendChild(total);
-    }
-    // Picks buttons
+    card.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 space-y-3';
+
+    // Header line similar to home cards
+    const homeML = (g.home_moneyline!==null && g.home_moneyline!==undefined) ? `(${g.home_moneyline>0?'+':''}${g.home_moneyline})` : '';
+    const awayML = (g.away_moneyline!==null && g.away_moneyline!==undefined) ? `(${g.away_moneyline>0?'+':''}${g.away_moneyline})` : '';
+    const header = document.createElement('div');
+    header.innerHTML = `
+      <div class="text-xs uppercase tracking-wide text-slate-700">${(g.sport||'').toUpperCase()}</div>
+      <div class="mt-1 font-semibold">${toTitle(g.away_team)} ${awayML} @ ${toTitle(g.home_team)} ${homeML}</div>
+      <div class="text-sm text-slate-700">${new Date(g.date).toLocaleString('en-US', { timeZone: 'America/New_York' })} ET${g.bookmaker ? ` · ${g.bookmaker}` : ''}</div>
+    `;
+    card.appendChild(header);
+
+    // Odds chip grid similar to home
+    const grid = document.createElement('div');
+    grid.className = 'mt-1 grid grid-cols-4 gap-2 text-sm';
+    grid.innerHTML = `
+      <div><div class="text-slate-600">ML</div><div>${g.away_moneyline??'-'}</div><div>${g.home_moneyline??'-'}</div></div>
+      <div><div class="text-slate-600">Spread</div><div>${(g.spread??'-')}</div></div>
+      <div><div class="text-slate-600">Total</div><div>${(g.total??'-')}</div></div>
+      <div><div class="text-slate-600">Book</div><div>${g.bookmaker||'-'}</div></div>
+    `;
+    card.appendChild(grid);
+
+    // Picks (auto-expanded)
     const picks = document.createElement('div');
-    picks.className = 'grid grid-cols-2 gap-2';
+    picks.className = 'pt-2 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2';
     const buttons = [];
     // ML buttons
     if (g.away_moneyline!==null && g.away_moneyline!==undefined)
-      buttons.push({ label: `${toTitle(g.away_team)} ML ${g.away_moneyline>0?'+':''}${g.away_moneyline}`, payload: { type:'moneyline', team:g.away_team, opponent:g.home_team, price:g.away_moneyline } });
+      buttons.push({ label: `${toTitle(g.away_team)} ML ${g.away_moneyline>0?'+':''}${g.away_moneyline} (Away)`, payload: { type:'moneyline', team:g.away_team, opponent:g.home_team, price:g.away_moneyline } });
     if (g.home_moneyline!==null && g.home_moneyline!==undefined)
-      buttons.push({ label: `${toTitle(g.home_team)} ML ${g.home_moneyline>0?'+':''}${g.home_moneyline}`, payload: { type:'moneyline', team:g.home_team, opponent:g.away_team, price:g.home_moneyline } });
+      buttons.push({ label: `${toTitle(g.home_team)} ML ${g.home_moneyline>0?'+':''}${g.home_moneyline} (Home)`, payload: { type:'moneyline', team:g.home_team, opponent:g.away_team, price:g.home_moneyline } });
     // Spread buttons (home spread is g.spread; away is negative of that)
     if (g.spread!==null && g.spread!==undefined) {
-      buttons.push({ label: `${toTitle(g.home_team)} spread ${g.spread>0?'+':''}${g.spread}`, payload: { type:'spread', team:g.home_team, opponent:g.away_team, line:g.spread } });
+      buttons.push({ label: `${toTitle(g.home_team)} spread ${g.spread>0?'+':''}${g.spread} (Home)`, payload: { type:'spread', team:g.home_team, opponent:g.away_team, line:g.spread } });
       const awayLine = (g.spread!==null && g.spread!==undefined) ? (g.spread*-1) : null;
-      buttons.push({ label: `${toTitle(g.away_team)} spread ${awayLine>0?'+':''}${awayLine}`, payload: { type:'spread', team:g.away_team, opponent:g.home_team, line:awayLine } });
+      buttons.push({ label: `${toTitle(g.away_team)} spread ${awayLine>0?'+':''}${awayLine} (Away)`, payload: { type:'spread', team:g.away_team, opponent:g.home_team, line:awayLine } });
     }
     // Total buttons
     if (g.total!==null && g.total!==undefined) {
