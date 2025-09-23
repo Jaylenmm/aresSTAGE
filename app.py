@@ -324,9 +324,19 @@ def home():
                                featured_games=featured_games,
                                upcoming_games=upcoming_games)
     except Exception as e:
-        # Fallback to a simple list if anything goes wrong
-        games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).order_by(Game.date.asc()).limit(20).all()
-        return render_template('dashboard.html', games=games, predictions=[])
+        # Safe fallback: render home with minimal context
+        try:
+            distinct_sports = [row[0] for row in db.session.query(Game.sport).distinct().all()]
+        except Exception:
+            distinct_sports = []
+        return render_template('home.html',
+                               sports=distinct_sports,
+                               selected_sport=None,
+                               date_range='today',
+                               sort_by='time',
+                               live_games=[],
+                               featured_games=[],
+                               upcoming_games=[])
 
  
 

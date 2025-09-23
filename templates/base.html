@@ -42,7 +42,7 @@
             <!-- Mobile Menu -->
             <div id="mobile-menu" class="hidden md:hidden pb-4">
                 <div class="space-y-2">
-                    <a href="{{ url_for('dashboard') }}" class="block px-3 py-2 text-base font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Dashboard</a>
+                    <a href="{{ url_for('home') }}" class="block px-3 py-2 text-base font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Home</a>
                     <a href="{{ url_for('games') }}" class="block px-3 py-2 text-base font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Games</a>
                     <a href="{{ url_for('check_your_bet') }}" class="block px-3 py-2 text-base font-medium transition-colors" style="color: #cccccc;" onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#cccccc'">Check your bet</a>
                     {% if current_user.is_authenticated %}
