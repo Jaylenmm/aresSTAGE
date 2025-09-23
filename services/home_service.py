@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import List, Dict
 
-def get_featured_upcoming(sport: str, now_est, window_days: int = 7, limit: int = 4) -> List[Game]:
+def get_featured_upcoming(sport: str, now_est, window_days: int = 7, limit: int = 4) -> List:
     try:
         # Local import to avoid circular dependency
         from app import Game, db
