@@ -364,8 +364,24 @@ def home():
 
 @app.route('/games')
 def games():
-    """Reuse home layout for games page for consistency"""
-    return redirect(url_for('home'))
+    """Games explorer: filter by sport and search by team names"""
+    try:
+        selected_sport = (request.args.get('sport') or '').lower()
+        q = (request.args.get('q') or '').strip()
+        # Show upcoming and live by default
+        query = Game.query.filter(Game.status.in_(['upcoming', 'live']))
+        if selected_sport and selected_sport != 'all':
+            query = query.filter(Game.sport == selected_sport)
+        if q:
+            query = query.filter(db.or_(Game.home_team.ilike(f"%{q}%"), Game.away_team.ilike(f"%{q}%")))
+        games = query.order_by(Game.date.asc()).limit(200).all()
+        # Distinct sports for filters
+        distinct_sports = [row[0] for row in db.session.query(Game.sport).distinct().all()]
+        preferred_order = ['nfl', 'nba', 'mlb', 'nhl', 'cfb', 'soccer', 'golf']
+        sports = [s for s in preferred_order if s in distinct_sports] + [s for s in distinct_sports if s not in preferred_order]
+        return render_template('games.html', sports=sports, selected_sport=selected_sport or 'all', q=q, games=games)
+    except Exception as e:
+        return render_template('games.html', sports=[], selected_sport='all', q='', games=[])
 
  
 

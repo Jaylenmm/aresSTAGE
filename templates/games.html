@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Games{% endblock %}
+{% block content %}
+<div class="space-y-4">
+  <h1 class="text-xl font-bold text-white">Games</h1>
+  <!-- Filters -->
+  <form method="GET" action="/games" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3">
+    <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+      <select name="sport" class="px-3 py-2 rounded-xl border border-slate-300">
+        <option value="all" {% if selected_sport=='all' %}selected{% endif %}>All sports</option>
+        {% for s in sports %}
+        <option value="{{ s }}" {% if selected_sport==s %}selected{% endif %}>{{ s|upper }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="q" value="{{ q }}" placeholder="Search team (e.g., Patriots)" class="flex-1 px-3 py-2 rounded-xl border border-slate-300" />
+      <button class="px-4 py-2 rounded-xl bg-black text-white">Search</button>
+    </div>
+  </form>
+
+  <!-- Results -->
+  {% if games %}
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    {% for g in games %}
+    <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 block">
+      <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
+      <div class="mt-1 font-semibold">{{ g.away_team|title }} @ {{ g.home_team|title }}</div>
+      <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
+      <div class="mt-2 grid grid-cols-4 gap-2 text-sm">
+        <div>
+          <div class="text-slate-600">ML</div>
+          <div>{{ g.away_moneyline if g.away_moneyline is not none else '-' }}</div>
+          <div>{{ g.home_moneyline if g.home_moneyline is not none else '-' }}</div>
+        </div>
+        <div>
+          <div class="text-slate-600">Spread</div>
+          <div>{{ g.spread if g.spread is not none else '-' }}</div>
+        </div>
+        <div>
+          <div class="text-slate-600">Total</div>
+          <div>{{ g.total if g.total is not none else '-' }}</div>
+        </div>
+        <div>
+          <div class="text-slate-600">Book</div>
+          <div>{{ g.bookmaker or '-' }}</div>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-slate-300">No games match your filters.</div>
+  {% endif %}
+</div>
+{% endblock %}
+ 
