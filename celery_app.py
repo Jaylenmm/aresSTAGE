@@ -3,6 +3,7 @@ Celery configuration for Ares AI background tasks
 """
 
 from celery import Celery
+from celery.schedules import crontab
 import os
 
 # Initialize Celery
@@ -15,7 +16,7 @@ celery_app.conf.update(
     task_serializer='json',
     accept_content=['json'],
     result_serializer='json',
-    timezone='US/Eastern',
+    timezone=os.getenv('APP_TIMEZONE', 'US/Pacific'),
     enable_utc=True,
     # Schedule tasks
     beat_schedule={
@@ -27,9 +28,9 @@ celery_app.conf.update(
             'task': 'celery_app.refresh_odds_task',
             'schedule': 300.0,
         },
-        'collect-sports-data-week-transition': {
+        'collect-sports-data-midnight-pst': {
             'task': 'celery_app.collect_sports_data_task',
-            'schedule': 86400.0,
+            'schedule': crontab(minute=0, hour=0),
         },
     },
 )

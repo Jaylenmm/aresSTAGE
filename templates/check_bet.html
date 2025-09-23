@@ -44,6 +44,8 @@ const suggestions = document.getElementById('suggestions');
 const optionsDiv = document.getElementById('bet-options');
 const parlaysDiv = document.getElementById('parlays');
 document.getElementById('refresh-parlays').addEventListener('click', loadParlays);
+// Shared title-case helper
+const toTitle = (s) => (s||'').toLowerCase().split(' ').map(w=> w ? (w[0].toUpperCase()+w.slice(1)) : '').join(' ');
 
 input.addEventListener('input', () => {
   clearTimeout(debounceTimer);
@@ -87,7 +89,6 @@ function renderOptions(opts) {
     return;
   }
   // Sort by probability desc (treat nulls as lowest)
-  const toTitle = (s) => (s||'').toLowerCase().split(' ').map(w=> w ? (w[0].toUpperCase()+w.slice(1)) : '').join(' ');
   const sorted = [...opts].sort((a,b) => (b.probability??-1) - (a.probability??-1));
   optionsDiv.innerHTML = '';
   sorted.forEach((o, idx) => {
