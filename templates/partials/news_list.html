@@ -1,0 +1,19 @@
+<div class="space-y-2">
+  <div class="flex items-center justify-between">
+    <h2 class="text-sm font-semibold text-white">Latest {{ selected_sport|upper }} News</h2>
+    <a href="https://www.espn.com/{{ selected_sport }}/" target="_blank" class="text-xs text-slate-300 underline">More on ESPN</a>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    {% for n in news_articles %}
+    <a class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 hover:bg-slate-50" href="{{ n.link }}" target="_blank">
+      <div class="font-semibold">{{ n.title }}</div>
+      {% if n.snippet %}<div class="text-sm text-slate-700 mt-1">{{ n.snippet }}</div>{% endif %}
+      <div class="text-xs text-slate-600 mt-1">{{ n.published }} · Source: {{ n.source or 'ESPN' }}</div>
+    </a>
+    {% endfor %}
+    {% if not news_articles %}
+    <div class="text-slate-300">No news available.</div>
+    {% endif %}
+  </div>
+</div>
+

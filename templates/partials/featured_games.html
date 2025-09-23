@@ -1,0 +1,40 @@
+{% if featured_games %}
+<div class="space-y-2">
+  <div class="flex items-center justify-between">
+    <h2 class="text-sm font-semibold text-white">Featured Upcoming Games</h2>
+    {% if selected_sport %}<a href="/games?sport={{ selected_sport }}" class="text-xs text-slate-300 underline">See all</a>{% endif %}
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    {% for g in featured_games %}
+    <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 block">
+      <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
+      <div class="mt-1 font-semibold">{{ g.away_team|title }} @ {{ g.home_team|title }}</div>
+      <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
+      <div class="mt-2 grid grid-cols-4 gap-2 text-sm">
+        <div>
+          <div class="text-slate-600">ML</div>
+          <div>{{ g.away_moneyline if g.away_moneyline is not none else '-' }}</div>
+          <div>{{ g.home_moneyline if g.home_moneyline is not none else '-' }}</div>
+        </div>
+        <div>
+          <div class="text-slate-600">Spread</div>
+          <div>{{ g.spread if g.spread is not none else '-' }}</div>
+        </div>
+        <div>
+          <div class="text-slate-600">Total</div>
+          <div>{{ g.total if g.total is not none else '-' }}</div>
+        </div>
+        <div>
+          <div class="text-slate-600">Book</div>
+          <div>{{ g.bookmaker or '-' }}</div>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+    {% if not featured_games %}
+    <div class="text-slate-300">No upcoming games found.</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+

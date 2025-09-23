@@ -292,10 +292,8 @@ def home():
         if selected_sport:
             base_query = base_query.filter(Game.sport == selected_sport)
         # Date range filter (assumes stored datetimes are US/Eastern naive)
-        from datetime import timedelta, datetime as _dt
-        import pytz as _p
-        est = _p.timezone('US/Eastern')
-        now_est = _dt.now(est).replace(tzinfo=None)
+        from utils.time_utils import now_est_naive
+        now_est = now_est_naive()
         if date_range == '3d':
             end = now_est + timedelta(days=3)
             base_query = base_query.filter(Game.date <= end)
@@ -323,40 +321,8 @@ def home():
             upcoming_games.sort(key=lambda g: g.date)
         upcoming_games = upcoming_games[:50]
 
-        # Featured: prioritize upcoming from now (ET) with betting info; fill from upcoming if needed
-        featured_games = []
-        try:
-            # Base upcoming window
-            from datetime import timedelta as _td
-            window_end = now_est + _td(days=7)
-            upcoming_q = Game.query.filter(
-                Game.status == 'upcoming',
-                Game.date >= now_est,
-                Game.date <= window_end
-            )
-            if selected_sport:
-                upcoming_q = upcoming_q.filter(Game.sport == selected_sport)
-            # With betting info first
-            with_bets = upcoming_q.filter(
-                db.or_(
-                    Game.spread.isnot(None), Game.total.isnot(None),
-                    Game.home_moneyline.isnot(None), Game.away_moneyline.isnot(None)
-                )
-            ).order_by(Game.date.asc()).limit(8).all()
-            featured_games.extend(with_bets)
-            # Fill to 4 if not enough
-            if len(featured_games) < 4:
-                need = 4 - len(featured_games)
-                fillers = upcoming_q.order_by(Game.date.asc()).limit(need).all()
-                # Avoid duplicates
-                seen_ids = {g.id for g in featured_games}
-                for g in fillers:
-                    if g.id not in seen_ids:
-                        featured_games.append(g)
-            # Clamp to 4
-            featured_games = featured_games[:4]
-        except Exception:
-            featured_games = []
+        from services.home_service import get_featured_upcoming, get_featured_props, get_news
+        featured_games = get_featured_upcoming(selected_sport, now_est, window_days=7, limit=4)
 
         # Available sports for quick filters
         distinct_sports = [row[0] for row in db.session.query(Game.sport).distinct().all()]
@@ -365,29 +331,8 @@ def home():
         sports = [s for s in preferred_order if s in distinct_sports] + [s for s in distinct_sports if s not in preferred_order]
 
         # If a sport is selected, prepare featured props and news
-        featured_props = []
-        news_articles = []
-        if selected_sport:
-            try:
-                from providers.odds_client import OddsClient
-                oc = OddsClient()
-                props = oc.fetch_player_props_for_sport(selected_sport)
-                # Deduplicate by player_name, take first 4
-                seen = set()
-                for p in props:
-                    name = p.get('player_name')
-                    if not name or name in seen:
-                        continue
-                    featured_props.append(p)
-                    seen.add(name)
-                    if len(featured_props) >= 4:
-                        break
-            except Exception:
-                featured_props = []
-            try:
-                news_articles = fetch_espn_articles(selected_sport, limit=5)
-            except Exception:
-                news_articles = []
+        featured_props = get_featured_props(selected_sport, limit=4) if selected_sport else []
+        news_articles = get_news(selected_sport, limit=5) if selected_sport else []
 
         return render_template('home.html',
                                sports=sports,
@@ -859,15 +804,25 @@ def fetch_espn_articles(sport: str, limit: int = 5):
     if not url:
         return []
     try:
-        resp = requests.get(url, timeout=6)
+        headers = {'User-Agent': 'Mozilla/5.0 (AresAI; +https://ares-alpha)'}
+        resp = requests.get(url, timeout=8, headers=headers)
         resp.raise_for_status()
-        root = ET.fromstring(resp.content)
+        content = resp.content
+        # Parse XML with namespace tolerance
+        root = ET.fromstring(content)
         items = []
+        # ESPN uses standard RSS; try generic .//item
         for item in root.findall('.//item'):
             title = (item.findtext('title') or '').strip()
             link = (item.findtext('link') or '').strip()
             pub = (item.findtext('pubDate') or '').strip()
+            # description or content:encoded
             desc = (item.findtext('description') or '').strip()
+            if not desc:
+                try:
+                    desc = item.find('{http://purl.org/rss/1.0/modules/content/}encoded').text or ''
+                except Exception:
+                    desc = ''
             # Strip HTML from description and truncate to ~180 chars
             desc = re.sub('<[^<]+?>', '', desc)
             if len(desc) > 180:
@@ -878,7 +833,25 @@ def fetch_espn_articles(sport: str, limit: int = 5):
                 break
         return items
     except Exception:
-        return []
+        # Fallback: try to extract <item> blocks via regex if XML parsing fails
+        try:
+            text = content.decode('utf-8', errors='ignore')
+            blocks = re.findall(r'<item>([\s\S]*?)</item>', text)[:limit]
+            out = []
+            for b in blocks:
+                t = re.search(r'<title>(.*?)</title>', b)
+                l = re.search(r'<link>(.*?)</link>', b)
+                d = re.search(r'<description>([\s\S]*?)</description>', b)
+                title = re.sub('<[^<]+?>', '', t.group(1)).strip() if t else ''
+                link = (l.group(1).strip() if l else '')
+                desc = re.sub('<[^<]+?>', '', d.group(1)).strip() if d else ''
+                if len(desc) > 180:
+                    desc = desc[:177] + '...'
+                if title and link:
+                    out.append({'title': title, 'link': link, 'published': '', 'snippet': desc, 'source': 'ESPN'})
+            return out
+        except Exception:
+            return []
 
 @app.route('/api/diagnostics/odds', methods=['GET'])
 def odds_diagnostics():
@@ -1025,7 +998,7 @@ if __name__ == '__main__':
     
     # Start background scheduler if enabled
     if data_scheduler:
-        data_scheduler.start()
+    data_scheduler.start()
     
     try:
         # Run the app
@@ -1034,8 +1007,8 @@ if __name__ == '__main__':
         app.run(debug=debug, host='0.0.0.0', port=port)
     except KeyboardInterrupt:
         if data_scheduler:
-            data_scheduler.stop()
+        data_scheduler.stop()
     except Exception as e:
         if data_scheduler:
-            data_scheduler.stop()
+        data_scheduler.stop()
         raise

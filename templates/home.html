@@ -14,91 +14,20 @@
 
     <!-- Featured Odds -->
     {% if selected_sport %}
-    <div class="space-y-2">
-        <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-white">Featured Upcoming Games</h2>
-            <a href="/games?sport={{ selected_sport }}" class="text-xs text-slate-300 underline">See all</a>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {% for g in featured_games %}
-            <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 block">
-                <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
-                <div class="mt-1 font-semibold">{{ g.away_team|title }} @ {{ g.home_team|title }}</div>
-                <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
-                <div class="mt-2 grid grid-cols-4 gap-2 text-sm">
-                    <div>
-                        <div class="text-slate-600">ML</div>
-                        <div>{{ g.away_moneyline if g.away_moneyline is not none else '-' }}</div>
-                        <div>{{ g.home_moneyline if g.home_moneyline is not none else '-' }}</div>
-                    </div>
-                    <div>
-                        <div class="text-slate-600">Spread</div>
-                        <div>{{ g.spread if g.spread is not none else '-' }}</div>
-                    </div>
-                    <div>
-                        <div class="text-slate-600">Total</div>
-                        <div>{{ g.total if g.total is not none else '-' }}</div>
-                    </div>
-                    <div>
-                        <div class="text-slate-600">Book</div>
-                        <div>{{ g.bookmaker or '-' }}</div>
-                    </div>
-                </div>
-            </a>
-            {% endfor %}
-            {% if not featured_games %}
-            <div class="text-slate-300">No upcoming games found.</div>
-            {% endif %}
-        </div>
-    </div>
+      {% include 'partials/featured_games.html' %}
     {% endif %}
 
     <!-- Upcoming List -->
     
 
     {% if selected_sport %}
-    <!-- Featured Player Props -->
-    {% if featured_props %}
-    <div class="space-y-2">
-        <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-white">Featured Player Props</h2>
-            <a href="/check-your-bet#players" class="text-xs text-slate-300 underline">See all</a>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {% for p in featured_props %}
-            <div class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3">
-                <div class="text-xs uppercase tracking-wide text-slate-700">{{ selected_sport|upper }}</div>
-                <div class="mt-1 font-semibold">{{ p.player_name }}</div>
-                <div class="text-sm text-slate-700">{{ p.market.replace('player_','')|replace('_',' ')|title }}: {{ p.line }}</div>
-                <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
-                    <a href="/check-your-bet#players" class="bg-white text-black rounded-xl border border-slate-300 px-3 py-2 text-center hover:bg-slate-50">Over {{ p.line }} ({{ p.over_price }})</a>
-                    <a href="/check-your-bet#players" class="bg-white text-black rounded-xl border border-slate-300 px-3 py-2 text-center hover:bg-slate-50">Under {{ p.line }} ({{ p.under_price }})</a>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
+      {% include 'partials/featured_props.html' %}
     {% endif %}
 
     <!-- ESPN News -->
-    <div class="space-y-2">
-        <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-white">Latest {{ selected_sport|upper }} News</h2>
-            <a href="https://www.espn.com/{{ selected_sport }}/" target="_blank" class="text-xs text-slate-300 underline">More on ESPN</a>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {% for n in news_articles %}
-            <a class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 hover:bg-slate-50" href="{{ n.link }}" target="_blank">
-                <div class="font-semibold">{{ n.title }}</div>
-                {% if n.snippet %}<div class="text-sm text-slate-700 mt-1">{{ n.snippet }}</div>{% endif %}
-                <div class="text-xs text-slate-600 mt-1">{{ n.published }} · Source: {{ n.source or 'ESPN' }}</div>
-            </a>
-            {% endfor %}
-            {% if not news_articles %}
-            <div class="text-slate-300">No news available.</div>
-            {% endif %}
-        </div>
-    </div>
+    {% if selected_sport %}
+      {% include 'partials/news_list.html' %}
+    {% endif %}
     {% endif %}
  
 </div>
