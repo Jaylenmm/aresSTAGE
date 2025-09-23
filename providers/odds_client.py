@@ -168,4 +168,91 @@ class OddsClient:
                 continue
         return None
 
+    # ---------------- Player Props ----------------
+    def fetch_player_props_for_sport(self, sport: str, markets: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Fetch player prop markets for a sport. Returns list of dicts:
+        {
+          'player_name', 'market' (e.g., player_points), 'line', 'over_price', 'under_price',
+          'team' (best-effort), 'opponent' (optional), 'bookmaker', 'last_update'
+        }
+        """
+        sport_l = sport.lower()
+        sport_key = self.SPORT_KEYS.get(sport_l)
+        if not sport_key or not self.api_key:
+            return []
+        # Default markets per sport
+        default_markets_by_sport = {
+            'nba': ['player_points','player_rebounds','player_assists'],
+            'nfl': ['player_pass_yards','player_rush_yards','player_receiving_yards'],
+            'mlb': ['player_hits','player_home_runs','player_total_bases','player_strikeouts'],
+        }
+        mkts = markets or default_markets_by_sport.get(sport_l, ['player_points'])
+        url = f"{self.BASE_URL}/sports/{sport_key}/odds"
+        params = {
+            'apiKey': self.api_key,
+            'regions': self.regions,
+            'markets': ','.join(mkts),
+            'oddsFormat': 'american',
+        }
+        last_exc = None
+        for _ in range(3):
+            try:
+                resp = self.session.get(url, params=params, timeout=self.timeout_seconds)
+                resp.raise_for_status()
+                events = resp.json() or []
+                break
+            except Exception as exc:
+                last_exc = exc
+                continue
+        else:
+            return []
+
+        results: List[Dict] = []
+        for ev in events:
+            opponents = (ev.get('home_team') or '', ev.get('away_team') or '')
+            bookmakers = ev.get('bookmakers') or []
+            if self.bookmakers_filter:
+                bookmakers = [b for b in bookmakers if b.get('key') in self.bookmakers_filter]
+            if not bookmakers:
+                continue
+            best = self._pick_best_bookmaker(bookmakers)
+            if not best:
+                continue
+            for m in (best.get('markets') or []):
+                key = m.get('key')
+                if key not in mkts:
+                    continue
+                # Expect outcomes for Over/Under with point and description = player name
+                over = None
+                under = None
+                player_name = None
+                for outcome in (m.get('outcomes') or []):
+                    nm = (outcome.get('name') or '').lower()
+                    desc = outcome.get('description') or outcome.get('player_name') or ''
+                    if not player_name and desc:
+                        player_name = desc
+                    if nm == 'over':
+                        over = outcome
+                    elif nm == 'under':
+                        under = outcome
+                if player_name and (over or under):
+                    line = None
+                    if over and over.get('point') is not None:
+                        line = float(over.get('point'))
+                    elif under and under.get('point') is not None:
+                        line = float(under.get('point'))
+                    results.append({
+                        'player_name': player_name,
+                        'market': key,
+                        'line': line,
+                        'over_price': float(over.get('price')) if over and over.get('price') is not None else None,
+                        'under_price': float(under.get('price')) if under and under.get('price') is not None else None,
+                        'team': None,
+                        'opponent': None,
+                        'bookmaker': best.get('title') or best.get('key'),
+                        'last_update': self._parse_time(best.get('last_update')),
+                    })
+        return results
+
 

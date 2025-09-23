@@ -15,6 +15,12 @@
         </div>
     </div>
 
+    <!-- Tabs -->
+    <div class="flex space-x-2">
+      <button id="tab-teams" class="px-3 py-2 rounded-2xl border border-slate-200 bg-white text-black">Teams</button>
+      <button id="tab-players" class="px-3 py-2 rounded-2xl border border-slate-200 bg-white text-black">Players</button>
+    </div>
+
     <!-- Search -->
     <div class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3">
         <input id="search-input" type="text" placeholder="Search team or player" class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none" />
@@ -35,6 +41,13 @@ styleEl.textContent = `
   100% { box-shadow: 0 0 0 4px rgba(249,115,22,0.45), 0 0 24px rgba(249,115,22,0.55); }
 }
 .animate-ring-pulse-orange { animation: ringPulseOrange 1.8s ease-in-out infinite; }
+@keyframes pickPulse {
+  0% { box-shadow: 0 0 0 2px rgba(96,165,250,0.4), 0 0 14px rgba(16,185,129,0.4); }
+  33% { box-shadow: 0 0 0 3px rgba(16,185,129,0.5), 0 0 18px rgba(167,139,250,0.5); }
+  66% { box-shadow: 0 0 0 3px rgba(167,139,250,0.5), 0 0 18px rgba(96,165,250,0.5); }
+  100% { box-shadow: 0 0 0 2px rgba(96,165,250,0.4), 0 0 14px rgba(16,185,129,0.4); }
+}
+.pick-highlight { animation: pickPulse 1.8s ease-in-out infinite; }
 `;
 document.head.appendChild(styleEl);
 
@@ -55,16 +68,32 @@ input.addEventListener('input', () => {
     return;
   }
   debounceTimer = setTimeout(async () => {
-    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-    const data = await res.json();
-    if (!Array.isArray(data)) return;
+    const mode = currentTab;
     suggestions.innerHTML = '';
-    for (const s of data) {
-      const a = document.createElement('button');
-      a.className = 'w-full text-left px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50';
-      a.textContent = `${s.name}`;
-      a.onclick = () => selectEntity(s.name);
-      suggestions.appendChild(a);
+    if (mode === 'teams') {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        for (const s of data) {
+          const a = document.createElement('button');
+          a.className = 'w-full text-left px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50';
+          a.textContent = `${s.name}`;
+          a.onclick = () => selectEntity(s.name);
+          suggestions.appendChild(a);
+        }
+      }
+    } else {
+      const res = await fetch(`/api/player_search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data && Array.isArray(data.players)) {
+        for (const n of data.players) {
+          const a = document.createElement('button');
+          a.className = 'w-full text-left px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50';
+          a.textContent = n;
+          a.onclick = () => selectPlayer(n);
+          suggestions.appendChild(a);
+        }
+      }
     }
   }, 200);
 });
@@ -80,6 +109,20 @@ async function selectEntity(name) {
     renderGameCards(data.games || []);
   } catch (e) {
     optionsDiv.innerHTML = `<div class="text-red-400">${e.message}</div>`;
+  }
+}
+
+async function selectPlayer(name) {
+  suggestions.innerHTML = '';
+  input.value = name;
+  optionsDiv.innerHTML = '<div class="text-slate-300">Loading player props...</div>';
+  try {
+    const res = await fetch(`/api/player_props?name=${encodeURIComponent(name)}`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed');
+    renderPlayerProps(name, data.props || []);
+  } catch (e) {
+    optionsDiv.innerHTML = `<div class=\"text-red-400\">${e.message}</div>`;
   }
 }
 
@@ -115,6 +158,55 @@ function renderOptions(opts) {
     optionsDiv.appendChild(card);
   });
 }
+
+function renderPlayerProps(name, props) {
+  optionsDiv.innerHTML = '';
+  const title = document.createElement('div');
+  title.className = 'text-white font-semibold';
+  title.textContent = `Props for ${name}`;
+  optionsDiv.appendChild(title);
+  if (!props.length) {
+    const empty = document.createElement('div');
+    empty.className = 'text-slate-300';
+    empty.textContent = 'No props available.';
+    optionsDiv.appendChild(empty);
+    return;
+  }
+  const groups = {};
+  for (const p of props) {
+    const mk = p.market;
+    if (!groups[mk]) groups[mk] = [];
+    groups[mk].push(p);
+  }
+  for (const key of Object.keys(groups)) {
+    const box = document.createElement('div');
+    box.className = 'bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 space-y-2';
+    const hdr = document.createElement('div');
+    hdr.className = 'text-sm uppercase text-slate-600';
+    hdr.textContent = key.replace('player_','').replace('_',' ');
+    box.appendChild(hdr);
+    const grid = document.createElement('div');
+    grid.className = 'grid grid-cols-2 gap-2';
+    for (const p of groups[key]) {
+      const overBtn = document.createElement('button');
+      overBtn.className = 'bg-white text-black rounded-xl border border-slate-300 px-3 py-2 text-sm text-left hover:bg-slate-50';
+      overBtn.textContent = `Over ${p.line} (${p.over_price>0?'+':''}${p.over_price??'-'})`;
+      overBtn.onclick = () => openSaveModal({ type:'player_over', line:p.line, price:p.over_price, sport:'nba', team:null, opponent:null, date:null });
+      const underBtn = document.createElement('button');
+      underBtn.className = 'bg-white text-black rounded-xl border border-slate-300 px-3 py-2 text-sm text-left hover:bg-slate-50';
+      underBtn.textContent = `Under ${p.line} (${p.under_price>0?'+':''}${p.under_price??'-'})`;
+      underBtn.onclick = () => openSaveModal({ type:'player_under', line:p.line, price:p.under_price, sport:'nba', team:null, opponent:null, date:null });
+      grid.appendChild(overBtn);
+      grid.appendChild(underBtn);
+    }
+    box.appendChild(grid);
+    optionsDiv.appendChild(box);
+  }
+}
+
+let currentTab = 'teams';
+document.getElementById('tab-teams').addEventListener('click', ()=>{ currentTab='teams'; suggestions.innerHTML=''; optionsDiv.innerHTML=''; input.placeholder='Search team'; });
+document.getElementById('tab-players').addEventListener('click', ()=>{ currentTab='players'; suggestions.innerHTML=''; optionsDiv.innerHTML=''; input.placeholder='Search player'; });
 
 function renderGameCards(games) {
   if (!games.length) {
@@ -168,9 +260,20 @@ function renderGameCards(games) {
       buttons.push({ label: `Over ${g.total}`, payload: { type:'total', line:g.total } });
       buttons.push({ label: `Under ${g.total}`, payload: { type:'total', line:g.total } });
     }
+    // Assume first two with highest relevance: prefer spreads if available else ML; highlight them
+    const highlightSet = new Set();
+    const spreadButtons = buttons.filter(x=>x.payload.type==='spread');
+    if (spreadButtons.length) {
+      highlightSet.add(spreadButtons[0]);
+      if (spreadButtons[1]) highlightSet.add(spreadButtons[1]);
+    } else {
+      const mlButtons = buttons.filter(x=>x.payload.type==='moneyline');
+      if (mlButtons[0]) highlightSet.add(mlButtons[0]);
+    }
     for (const b of buttons) {
       const btn = document.createElement('button');
-      btn.className = 'bg-white text-black rounded-xl border border-slate-300 px-3 py-2 text-sm text-left hover:bg-slate-50';
+      const hl = highlightSet.has(b) ? ' pick-highlight ' : '';
+      btn.className = 'bg-white text-black rounded-xl border border-slate-300 px-3 py-2 text-sm text-left hover:bg-slate-50' + hl;
       btn.textContent = b.label;
       btn.onclick = () => openSaveModal({ ...b.payload, sport:g.sport, game_id:g.game_id, date:g.date });
       picks.appendChild(btn);

@@ -423,6 +423,41 @@ def api_check_bet_games():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/player_search', methods=['GET'])
+def api_player_search():
+    """Autosuggest players from current props (NBA only for now)."""
+    try:
+        from providers.odds_client import OddsClient
+        q = (request.args.get('q') or '').strip().lower()
+        if not q:
+            return jsonify({'success': True, 'players': []})
+        oc = OddsClient()
+        props = []
+        # Try NFL and MLB first given current seasons
+        for sp in ['nfl','mlb','nba']:
+            props.extend(oc.fetch_player_props_for_sport(sp))
+        names = sorted({p['player_name'] for p in props if q in (p.get('player_name','').lower())})[:20]
+        return jsonify({'success': True, 'players': names})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/player_props', methods=['GET'])
+def api_player_props():
+    """Return props for a player name (NBA points/rebounds/assists)."""
+    try:
+        from providers.odds_client import OddsClient
+        name = (request.args.get('name') or '').strip().lower()
+        if not name:
+            return jsonify({'success': True, 'props': []})
+        oc = OddsClient()
+        props = []
+        for sp in ['nfl','mlb','nba']:
+            props.extend(oc.fetch_player_props_for_sport(sp))
+        filtered = [p for p in props if name in (p.get('player_name','').lower())]
+        return jsonify({'success': True, 'props': filtered})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/check_bet_options', methods=['GET'])
 def api_check_bet_options():
     """Given an entity (team), return available bets with probabilities and reasons."""
