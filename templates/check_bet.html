@@ -106,7 +106,7 @@ async function selectEntity(name) {
     const res = await fetch(`/api/check_bet_games?q=${encodeURIComponent(name)}`);
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed');
-    renderGameCards(data.games || []);
+    await renderGameCards(data.games || []);
   } catch (e) {
     optionsDiv.innerHTML = `<div class="text-red-400">${e.message}</div>`;
   }
@@ -208,7 +208,7 @@ let currentTab = 'teams';
 document.getElementById('tab-teams').addEventListener('click', ()=>{ currentTab='teams'; suggestions.innerHTML=''; optionsDiv.innerHTML=''; input.placeholder='Search team'; });
 document.getElementById('tab-players').addEventListener('click', ()=>{ currentTab='players'; suggestions.innerHTML=''; optionsDiv.innerHTML=''; input.placeholder='Search player'; });
 
-function renderGameCards(games) {
+async function renderGameCards(games) {
   if (!games.length) {
     optionsDiv.innerHTML = '<div class="text-slate-300">No games found.</div>';
     return;
