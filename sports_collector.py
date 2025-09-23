@@ -232,20 +232,29 @@ class SportsDataCollector:
         print(f"Golf events fetched: {len(golf)} (lookahead {self.lookahead_days}d)")
         all_games.extend(golf)
         
-        # Save to database if SDIO provided games
+        # If fallback enabled, seed per-sport when SDIO returns zero for that sport
+        if self.odds_fallback_enabled:
+            try:
+                per_sport_lists = {
+                    'nfl': nfl,
+                    'nba': nba,
+                    'mlb': mlb,
+                    'nhl': nhl,
+                    'cfb': cfb,
+                }
+                for sport, lst in per_sport_lists.items():
+                    count = len(lst) if lst is not None else 0
+                    if count == 0:
+                        seeded = self._build_games_from_odds_for_sport(sport)
+                        if seeded:
+                            print(f"Per-sport fallback created {len(seeded)} {sport.upper()} events from odds")
+                            all_games.extend(seeded)
+            except Exception as e:
+                print(f"Per-sport fallback failed: {e}")
+
+        # Save to database
         if all_games:
             self.save_games_to_db(all_games)
-        else:
-            # Fallback: seed upcoming from odds if schedules are empty and enabled
-            if self.odds_fallback_enabled:
-                try:
-                    fallback = self._build_games_from_odds()
-                    if fallback:
-                        print(f"Fallback created {len(fallback)} games from odds events")
-                        self.save_games_to_db(fallback)
-                        all_games = fallback
-                except Exception as e:
-                    print(f"Fallback from odds failed: {e}")
         
         # Also fetch odds to enrich current and upcoming games
         try:
@@ -320,6 +329,30 @@ class SportsDataCollector:
                     'odds_last_updated': ev.get('last_update'),
                 })
         # If nothing, return empty list
+        return created
+
+    def _build_games_from_odds_for_sport(self, sport: str):
+        created = []
+        now = datetime.utcnow()
+        odds_list = self.odds.fetch_odds_for_sport(sport)
+        print(f"Fallback odds events for {sport}: {len(odds_list)}")
+        for ev in odds_list:
+            dt = ev.get('commence_time') or (now + timedelta(hours=4))
+            created.append({
+                'home_team': canonicalize_team_name(sport, ev.get('home_team')),
+                'away_team': canonicalize_team_name(sport, ev.get('away_team')),
+                'date': dt,
+                'sport': sport,
+                'status': 'upcoming',
+                'home_score': 0,
+                'away_score': 0,
+                'spread': ev.get('spread'),
+                'total': ev.get('total'),
+                'home_moneyline': ev.get('home_moneyline'),
+                'away_moneyline': ev.get('away_moneyline'),
+                'bookmaker': ev.get('bookmaker'),
+                'odds_last_updated': ev.get('last_update'),
+            })
         return created
     
     def _get_realistic_spread(self, home_team, away_team, sport):

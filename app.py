@@ -271,7 +271,9 @@ def home():
             base_query = base_query.filter(Game.sport == selected_sport)
         # Date range filter (assumes stored datetimes are US/Eastern naive)
         from datetime import timedelta, datetime as _dt
-        now_est = _dt.now()
+        import pytz as _p
+        est = _p.timezone('US/Eastern')
+        now_est = _dt.now(est).replace(tzinfo=None)
         if date_range == '3d':
             end = now_est + timedelta(days=3)
             base_query = base_query.filter(Game.date <= end)
