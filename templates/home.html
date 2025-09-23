@@ -2,12 +2,19 @@
 {% block title %}Ares AI – Home{% endblock %}
 {% block content %}
 <div class="space-y-4">
-    <!-- Sport Tabs -->
-    <div class="flex overflow-x-auto space-x-2" style="-webkit-overflow-scrolling: touch;">
-        <a href="/" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm whitespace-nowrap {{ 'bg-white text-black' if not selected_sport else 'bg-white text-black' }}">All</a>
-        {% for s in sports %}
-        <a href="/?sport={{ s }}" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm whitespace-nowrap bg-white text-black {{ 'ring-1 ring-slate-300' if selected_sport==s }}">{{ s|upper }}</a>
-        {% endfor %}
+    <!-- Filters: Sport + Range + Sort -->
+    <div class="flex overflow-x-auto space-x-2 items-center" style="-webkit-overflow-scrolling: touch;">
+        <div class="flex space-x-2">
+            <a href="/" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm whitespace-nowrap bg-white text-black {{ 'ring-1 ring-slate-300' if not selected_sport }}">All</a>
+            {% for s in sports %}
+            <a href="/?sport={{ s }}&range={{ date_range }}&sort={{ sort_by }}" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm whitespace-nowrap bg-white text-black {{ 'ring-1 ring-slate-300' if selected_sport==s }}">{{ s|upper }}</a>
+            {% endfor %}
+        </div>
+        <div class="ml-auto flex space-x-2">
+            <a href="/?sport={{ selected_sport or '' }}&range=today&sort={{ sort_by }}" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm bg-white text-black {{ 'ring-1 ring-slate-300' if date_range=='today' }}">Today</a>
+            <a href="/?sport={{ selected_sport or '' }}&range=3d&sort={{ sort_by }}" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm bg-white text-black {{ 'ring-1 ring-slate-300' if date_range=='3d' }}">3d</a>
+            <a href="/?sport={{ selected_sport or '' }}&range=7d&sort={{ sort_by }}" class="px-3 py-2 rounded-2xl border border-slate-200 shadow-sm bg-white text-black {{ 'ring-1 ring-slate-300' if date_range=='7d' }}">7d</a>
+        </div>
     </div>
 
     <!-- Live Carousel -->
@@ -45,7 +52,7 @@
                 <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
                 <div class="mt-1 font-semibold">{{ g.away_team }} @ {{ g.home_team }}</div>
                 <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
-                <div class="mt-2 grid grid-cols-3 gap-2 text-sm">
+                <div class="mt-2 grid grid-cols-4 gap-2 text-sm">
                     <div>
                         <div class="text-slate-600">ML</div>
                         <div>{{ g.away_moneyline if g.away_moneyline is not none else '-' }}</div>
@@ -58,6 +65,10 @@
                     <div>
                         <div class="text-slate-600">Total</div>
                         <div>{{ g.total if g.total is not none else '-' }}</div>
+                    </div>
+                    <div>
+                        <div class="text-slate-600">Book</div>
+                        <div>{{ g.bookmaker or '-' }}</div>
                     </div>
                 </div>
             </div>
@@ -80,11 +91,20 @@
                 <div class="text-right text-sm">
                     {% if g.spread %}<div>Spread: {{ g.spread }}</div>{% endif %}
                     {% if g.total %}<div>Total: {{ g.total }}</div>{% endif %}
+                    {% if g.bookmaker %}<div class="text-slate-600">{{ g.bookmaker }}</div>{% endif %}
                 </div>
             </div>
             {% endfor %}
         </div>
     </div>
+<!-- Sticky Bottom Nav -->
+<div class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-sm md:hidden">
+  <div class="flex justify-around py-2">
+    <a href="/" class="text-black px-3 py-2 rounded-xl">Home</a>
+    <a href="/games" class="text-black px-3 py-2 rounded-xl">Games</a>
+    <a href="/check-your-bet" class="text-black px-3 py-2 rounded-xl">Check</a>
+  </div>
+</div>
 </div>
 {% endblock %}
 

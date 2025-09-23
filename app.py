@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import os
@@ -6,6 +6,8 @@ import threading
 import time
 from sqlalchemy import inspect, text
 from prediction_engine import PredictionEngine
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user, UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -23,6 +25,11 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize database
 db = SQLAlchemy(app)
+
+# Auth setup
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(app)
 
 # Initialize prediction engine
 prediction_engine = PredictionEngine()
@@ -230,19 +237,66 @@ class Prediction(db.Model):
     def __repr__(self):
         return f'<Prediction: {self.predicted_winner} (confidence: {self.confidence})>'
 
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, password: str):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        return check_password_hash(self.password_hash, password)
+
+@login_manager.user_loader
+def load_user(user_id):
+    try:
+        return User.query.get(int(user_id))
+    except Exception:
+        return None
+
 # Routes
 @app.route('/')
 def home():
     """Mobile-first home page showing live, featured, and upcoming games"""
     try:
         selected_sport = request.args.get('sport')
+        date_range = (request.args.get('range') or 'today').lower()
+        sort_by = (request.args.get('sort') or 'time').lower()
+
         base_query = Game.query.filter(Game.status.in_(['upcoming', 'live']))
         if selected_sport:
             base_query = base_query.filter(Game.sport == selected_sport)
-        all_upcoming = base_query.order_by(Game.date.asc()).limit(50).all()
+        # Date range filter (assumes stored datetimes are US/Eastern naive)
+        from datetime import timedelta, datetime as _dt
+        now_est = _dt.now()
+        if date_range == '3d':
+            end = now_est + timedelta(days=3)
+            base_query = base_query.filter(Game.date <= end)
+        elif date_range == '7d':
+            end = now_est + timedelta(days=7)
+            base_query = base_query.filter(Game.date <= end)
+        else:  # today
+            end = _dt(now_est.year, now_est.month, now_est.day, 23, 59, 59)
+            base_query = base_query.filter(Game.date <= end)
+
+        all_upcoming = base_query.order_by(Game.date.asc()).limit(100).all()
 
         live_games = [g for g in all_upcoming if g.status == 'live'][:10]
-        upcoming_games = [g for g in all_upcoming if g.status != 'live'][:20]
+        upcoming_games = [g for g in all_upcoming if g.status != 'live']
+
+        # Sorting
+        if sort_by == 'odds':
+            def odds_weight(g):
+                has = int(any([g.home_moneyline is not None, g.away_moneyline is not None, g.spread is not None, g.total is not None]))
+                return (-has, g.date)
+            upcoming_games.sort(key=odds_weight)
+        elif sort_by == 'sport':
+            upcoming_games.sort(key=lambda g: (g.sport or '', g.date))
+        else:  # time
+            upcoming_games.sort(key=lambda g: g.date)
+        upcoming_games = upcoming_games[:50]
 
         # Featured: games with betting info
         featured_query = Game.query.filter(
@@ -263,6 +317,8 @@ def home():
         return render_template('home.html',
                                sports=sports,
                                selected_sport=selected_sport,
+                               date_range=date_range,
+                               sort_by=sort_by,
                                live_games=live_games,
                                featured_games=featured_games,
                                upcoming_games=upcoming_games)
@@ -271,24 +327,14 @@ def home():
         games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).order_by(Game.date.asc()).limit(20).all()
         return render_template('dashboard.html', games=games, predictions=[])
 
-@app.route('/dashboard')
-def dashboard():
-    """Legacy dashboard page"""
-    games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).order_by(Game.date.asc()).limit(10).all()
-    predictions = Prediction.query.order_by(Prediction.created_at.desc()).limit(5).all()
-    return render_template('dashboard.html', games=games, predictions=predictions)
+ 
 
 @app.route('/games')
 def games():
-    """Games listing page"""
-    games = Game.query.filter(Game.status.in_(['upcoming', 'live', 'completed'])).order_by(Game.date.desc()).limit(50).all()
-    return render_template('games.html', games=games)
+    """Reuse home layout for games page for consistency"""
+    return redirect(url_for('home'))
 
-@app.route('/predictions')
-def predictions():
-    """Predictions page"""
-    predictions = Prediction.query.order_by(Prediction.created_at.desc()).limit(100).all()
-    return render_template('predictions.html', predictions=predictions)
+ 
 
 @app.route('/check-your-bet')
 def check_your_bet():
@@ -414,6 +460,40 @@ def api_check_bet_options():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/bets/save', methods=['POST'])
+def api_save_bet():
+    """Save a user's selected bet and our probability for later accuracy checks."""
+    try:
+        data = request.get_json() or {}
+        # Minimal fields to store; extend later if needed
+        required = ['type', 'sport', 'team', 'opponent', 'line', 'price', 'probability', 'date']
+        missing = [k for k in required if k not in data]
+        if missing:
+            return jsonify({'success': False, 'error': f'Missing fields: {", ".join(missing)}'}), 400
+        # Store as a Prediction row for now (lightweight persistence)
+        # Map to a game if provided
+        game_id = data.get('game_id')
+        if game_id:
+            try:
+                g = Game.query.get(int(game_id))
+            except Exception:
+                g = None
+        else:
+            g = None
+        pred = Prediction(
+            game_id=g.id if g else Game.query.order_by(Game.date.desc()).first().id if Game.query.first() else 0,
+            predicted_winner=f"{data.get('team')} ({data.get('type')})",
+            confidence=(float(data.get('probability'))/100.0) if data.get('probability') is not None else 0.5,
+            prediction_type=data.get('type'),
+            odds=float(data.get('price')) if data.get('price') is not None else None,
+        )
+        db.session.add(pred)
+        db.session.commit()
+        return jsonify({'success': True, 'id': pred.id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/games', methods=['GET'])
 def api_games():
     """API endpoint for games data"""
@@ -520,6 +600,24 @@ def provider_diagnostics():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/diagnostics/odds', methods=['GET'])
+def odds_diagnostics():
+    """Inspect raw odds events per sport to verify feed and naming."""
+    try:
+        from providers.odds_client import OddsClient
+        sport = (request.args.get('sport') or '').strip().lower() or 'nfl'
+        oc = OddsClient()
+        events = oc.fetch_odds_for_sport(sport)
+        preview = [{
+            'home_team': e.get('home_team'),
+            'away_team': e.get('away_team'),
+            'commence_time': e.get('commence_time').isoformat() if e.get('commence_time') else None,
+            'bookmaker': e.get('bookmaker')
+        } for e in events[:20]]
+        return jsonify({'success': True, 'sport': sport, 'count': len(events), 'sample': preview})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/admin/seed_from_odds', methods=['POST'])
 def admin_seed_from_odds():
     """Force seeding upcoming games from odds events (real provider data)."""
@@ -591,11 +689,41 @@ def make_prediction():
             'message': f'Error making prediction: {str(e)}'
         }), 500
 
-@app.route('/predictions/new')
-def new_prediction():
-    """Page for making new predictions"""
-    games = Game.query.filter(Game.status == 'upcoming').order_by(Game.date.asc()).all()
-    return render_template('new_prediction.html', games=games)
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = (request.form.get('email') or '').strip().lower()
+        password = request.form.get('password') or ''
+        user = User.query.filter_by(email=email).first()
+        if user and user.check_password(password):
+            login_user(user)
+            return redirect(url_for('home'))
+        return render_template('login.html', error='Invalid credentials')
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        email = (request.form.get('email') or '').strip().lower()
+        password = request.form.get('password') or ''
+        if not email or not password:
+            return render_template('register.html', error='Email and password required')
+        exists = User.query.filter_by(email=email).first()
+        if exists:
+            return render_template('register.html', error='Email already registered')
+        user = User(email=email)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        login_user(user)
+        return redirect(url_for('home'))
+    return render_template('register.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('home'))
 
 # Ensure database is ready at import time (for Gunicorn & Celery)
 def ensure_database_initialized():

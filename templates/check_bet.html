@@ -76,8 +76,26 @@ function renderOptions(opts) {
         ${o.probability !== null && o.probability !== undefined ? `<div><span class="font-semibold">Hit %:</span> ${o.probability}%</div>` : ''}
         ${o.reason ? `<div class="text-slate-700 mt-1">${o.reason}</div>` : ''}
       </div>
+      <div class="mt-3">
+        <button class="w-full bg-black text-white rounded-xl py-2" onclick='saveBet(${JSON.stringify(o)})'>Save bet</button>
+      </div>
     `;
     optionsDiv.appendChild(card);
+  }
+}
+
+async function saveBet(o) {
+  try {
+    const res = await fetch('/api/bets/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(o)
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed');
+    alert('Bet saved');
+  } catch (e) {
+    alert('Error: ' + e.message);
   }
 }
 </script>

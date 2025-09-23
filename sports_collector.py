@@ -15,6 +15,7 @@ import os
 from app import app, db, Game
 from providers.sportsdata_client import SportsDataIOClient
 from providers.odds_client import OddsClient
+from providers.team_aliases import canonicalize_team_name
 
 class SportsDataCollector:
     def __init__(self):
@@ -37,6 +38,7 @@ class SportsDataCollector:
             self.lookahead_days = int(os.getenv('SDIO_LOOKAHEAD_DAYS', '7'))
         except Exception:
             self.lookahead_days = 7
+        self.odds_fallback_enabled = (os.getenv('ODDS_FALLBACK_ENABLED', 'false').lower() == 'true')
     
     def get_nfl_week(self, date=None):
         """Calculate current NFL week based on date (Tuesday-Monday cycle)"""
@@ -234,15 +236,16 @@ class SportsDataCollector:
         if all_games:
             self.save_games_to_db(all_games)
         else:
-            # Fallback: seed upcoming from odds if schedules are empty
-            try:
-                fallback = self._build_games_from_odds()
-                if fallback:
-                    print(f"Fallback created {len(fallback)} games from odds events")
-                    self.save_games_to_db(fallback)
-                    all_games = fallback
-            except Exception as e:
-                print(f"Fallback from odds failed: {e}")
+            # Fallback: seed upcoming from odds if schedules are empty and enabled
+            if self.odds_fallback_enabled:
+                try:
+                    fallback = self._build_games_from_odds()
+                    if fallback:
+                        print(f"Fallback created {len(fallback)} games from odds events")
+                        self.save_games_to_db(fallback)
+                        all_games = fallback
+                except Exception as e:
+                    print(f"Fallback from odds failed: {e}")
         
         # Also fetch odds to enrich current and upcoming games
         try:
@@ -266,16 +269,19 @@ class SportsDataCollector:
                 odds_list = self.odds.fetch_odds_for_sport(sport)
                 print(f"Odds fetched for {sport}: {len(odds_list)} events")
                 for o in odds_list:
-                    key = (o['home_team'], o['away_team'], sport)
+                    key = (canonicalize_team_name(sport, o['home_team']), canonicalize_team_name(sport, o['away_team']), sport)
                     odds_by_key[key] = o
             # Update games
             updated = 0
             for g in upcoming_games:
-                key = (g.home_team, g.away_team, g.sport.lower())
+                home_c = canonicalize_team_name(g.sport, g.home_team)
+                away_c = canonicalize_team_name(g.sport, g.away_team)
+                sport = g.sport.lower()
+                key = (home_c, away_c, sport)
                 match = odds_by_key.get(key)
                 if not match:
                     # try reversed order if provider orders teams differently
-                    key_rev = (g.away_team, g.home_team, g.sport.lower())
+                    key_rev = (away_c, home_c, sport)
                     match = odds_by_key.get(key_rev)
                 if match:
                     g.spread = match.get('spread', g.spread)
@@ -299,8 +305,8 @@ class SportsDataCollector:
             for ev in odds_list:
                 dt = ev.get('commence_time') or (now + timedelta(hours=4))
                 created.append({
-                    'home_team': ev.get('home_team'),
-                    'away_team': ev.get('away_team'),
+                    'home_team': canonicalize_team_name(sport, ev.get('home_team')),
+                    'away_team': canonicalize_team_name(sport, ev.get('away_team')),
                     'date': dt,
                     'sport': sport,
                     'status': 'upcoming',
