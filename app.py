@@ -409,6 +409,81 @@ def api_search():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/picks/evaluate', methods=['POST'])
+def api_picks_evaluate():
+    """Evaluate a pick: return model probability, fair prob, EV, Kelly stake, and short reason."""
+    try:
+        from services.probabilities import ml_probability, spread_cover_probability, total_over_under_probability
+        from utils.pricing import implied_prob, ev_from_prob_and_odds, kelly_fraction
+        data = request.get_json() or {}
+        pick_type = (data.get('type') or '').lower()
+        sport = (data.get('sport') or '').lower()
+        game_id = data.get('game_id')
+        team = data.get('team')
+        opponent = data.get('opponent')
+        line = data.get('line')
+        price = data.get('price')
+        g = Game.query.get(int(game_id)) if game_id else None
+        result = {
+            'p_model': None,
+            'p_fair': None,
+            'ev': None,
+            'kelly': None,
+            'reason': 'Informational only. Not betting advice.'
+        }
+        if not g:
+            return jsonify({'success': True, 'result': result})
+        # Moneyline
+        if pick_type == 'moneyline':
+            probs = ml_probability(g.home_team, g.away_team, sport, g.home_moneyline, g.away_moneyline)
+            if team and g.home_team.lower() == (team or '').lower():
+                p_model = probs.get('home')
+                p_fair_other = probs.get('away')
+                implied = implied_prob(price) if price is not None else None
+            else:
+                p_model = probs.get('away')
+                p_fair_other = probs.get('home')
+                implied = implied_prob(price) if price is not None else None
+            result['p_model'] = p_model
+            result['p_fair'] = p_model
+            if p_model is not None and price is not None:
+                ev = ev_from_prob_and_odds(p_model, float(price))
+                kelly = kelly_fraction(p_model, float(price))
+                result['ev'] = ev
+                result['kelly'] = kelly
+                if implied is not None:
+                    result['reason'] = f"Fair p {p_model:.1%} vs price p {implied:.1%}. Edge {ev*100:.1f}%. Not advice."
+        # Spread
+        elif pick_type == 'spread':
+            # line is the selected side line; home side baseline is g.spread
+            probs = spread_cover_probability(g.spread, sport=sport or g.sport)
+            if team and g.home_team.lower() == (team or '').lower():
+                p_model = probs.get('home')
+            else:
+                p_model = probs.get('away')
+            result['p_model'] = p_model
+            if p_model is not None and price is not None:
+                ev = ev_from_prob_and_odds(p_model, float(price))
+                kelly = kelly_fraction(p_model, float(price))
+                result['ev'] = ev
+                result['kelly'] = kelly
+                result['reason'] = f"Cover prob {p_model:.1%} on line {line}. Edge {ev*100:.1f}%. Not advice."
+        # Total
+        elif pick_type == 'total':
+            probs = total_over_under_probability(g.total, sport=sport or g.sport)
+            # If payload includes over/under selection, we treat both as 0.5 for now
+            p_model = 0.5
+            result['p_model'] = p_model
+            if p_model is not None and price is not None:
+                ev = ev_from_prob_and_odds(p_model, float(price))
+                kelly = kelly_fraction(p_model, float(price))
+                result['ev'] = ev
+                result['kelly'] = kelly
+                result['reason'] = f"Total line {g.total}. Neutral prior 50/50. Edge {ev*100:.1f}%. Not advice."
+        return jsonify({'success': True, 'result': result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/check_bet_games', methods=['GET'])
 def api_check_bet_games():
     """Return normalized game cards with ML, spread, total for a team query."""
@@ -1015,7 +1090,7 @@ if __name__ == '__main__':
     
     # Start background scheduler if enabled
     if data_scheduler:
-        data_scheduler.start()
+    data_scheduler.start()
     
     try:
         # Run the app
@@ -1024,8 +1099,8 @@ if __name__ == '__main__':
         app.run(debug=debug, host='0.0.0.0', port=port)
     except KeyboardInterrupt:
         if data_scheduler:
-            data_scheduler.stop()
+        data_scheduler.stop()
     except Exception as e:
         if data_scheduler:
-            data_scheduler.stop()
+        data_scheduler.stop()
         raise

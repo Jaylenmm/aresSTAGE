@@ -274,8 +274,27 @@ function renderGameCards(games) {
       const btn = document.createElement('button');
       const hl = highlightSet.has(b) ? ' pick-highlight ' : '';
       btn.className = 'bg-white text-black rounded-xl border border-slate-300 px-3 py-2 text-sm text-left hover:bg-slate-50' + hl;
-      btn.textContent = b.label;
-      btn.onclick = () => openSaveModal({ ...b.payload, sport:g.sport, game_id:g.game_id, date:g.date });
+      // Attach quick EV estimate if price present
+      let label = b.label;
+      if (b.payload && typeof b.payload.price === 'number') {
+        label += ' · Ares\' Picks';
+      }
+      btn.textContent = label;
+      btn.onclick = async () => {
+        const payload = { ...b.payload, sport:g.sport, game_id:g.game_id, date:g.date };
+        try {
+          const r = await fetch('/api/picks/evaluate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+          const d = await r.json();
+          if (d && d.success && d.result) {
+            const { p_model, ev, kelly, reason } = d.result;
+            const info = document.createElement('div');
+            info.className = 'text-xs text-slate-600 mt-1';
+            info.textContent = `Ares' Picks: p=${p_model!==null? (p_model*100).toFixed(1)+'%':'-'}, EV=${ev!==null? (ev*100).toFixed(1)+'%':'-'}, stake≈${kelly!==null? (kelly*100).toFixed(1)+'%':'-'} · ${reason}`;
+            btn.after(info);
+          }
+        } catch {}
+        openSaveModal(payload);
+      };
       picks.appendChild(btn);
     }
     card.appendChild(picks);
