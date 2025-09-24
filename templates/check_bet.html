@@ -357,14 +357,25 @@ async function loadParlays() {
       bets.className = 'mt-2 space-y-2';
       for (const b of p.bets) {
         const row = document.createElement('div');
-        row.className = 'bg-white text-black rounded-xl border border-slate-200 p-2 flex items-center justify-between';
+        row.className = 'bg-white text-black rounded-xl border border-slate-200 p-2 flex items-start justify-between';
         const left = document.createElement('div');
         left.innerHTML = `<div class="text-xs uppercase text-slate-600">${(b.sport||'').toUpperCase()}</div><div class="font-medium">${toTitle(b.team||'')} vs ${toTitle(b.opponent||'')}</div><div class="text-xs text-slate-600">${b.date ? new Date(b.date).toLocaleString('en-US', { timeZone: 'America/New_York' }) + ' ET' : ''}</div>`;
+        // Metrics shown under team info
+        const metrics = document.createElement('div');
+        metrics.className = 'mt-1 text-xs text-slate-700 grid grid-cols-2 gap-x-4 gap-y-0.5';
+        const parts = [];
+        if (b.type) parts.push(`<div>Type: ${b.type}</div>`);
+        if (b.line!==null && b.line!==undefined) parts.push(`<div>Line: ${b.line}</div>`);
+        if (b.price!==null && b.price!==undefined) parts.push(`<div>Price: ${b.price}</div>`);
+        if (b.p_model!==null && b.p_model!==undefined) parts.push(`<div>Model p: ${(b.p_model*100).toFixed(1)}%</div>`);
+        if (b.implied_prob!==null && b.implied_prob!==undefined) parts.push(`<div>Book p: ${(b.implied_prob*100).toFixed(1)}%</div>`);
+        if (b.edge!==null && b.edge!==undefined) parts.push(`<div>Edge: ${(b.edge*100).toFixed(1)}%</div>`);
+        if (b.ev_per_100!==null && b.ev_per_100!==undefined) parts.push(`<div>EV $/100: ${b.ev_per_100.toFixed(1)}</div>`);
+        if (b.kelly!==null && b.kelly!==undefined) parts.push(`<div>Stake%: ${(b.kelly*100).toFixed(1)}%</div>`);
+        metrics.innerHTML = parts.join('');
+        left.appendChild(metrics);
         const right = document.createElement('div');
-        right.className = 'text-right text-sm flex items-center space-x-3';
-        const details = document.createElement('div');
-        // Include Ares metrics snapshot
-        details.innerHTML = `${b.type ? `<div>${b.type}</div>` : ''}${(b.line!==null&&b.line!==undefined) ? `<div>Line: ${b.line}</div>` : ''}${(b.price!==null&&b.price!==undefined) ? `<div>Price: ${b.price}</div>` : ''}${(b.p_model!==null&&b.p_model!==undefined) ? `<div>Model p: ${(b.p_model*100).toFixed(1)}%</div>` : ''}${(b.implied_prob!==null&&b.implied_prob!==undefined) ? `<div>Book p: ${(b.implied_prob*100).toFixed(1)}%</div>` : ''}${(b.edge!==null&&b.edge!==undefined) ? `<div>Edge: ${(b.edge*100).toFixed(1)}%</div>` : ''}${(b.ev_per_100!==null&&b.ev_per_100!==undefined) ? `<div>EV $/100: ${b.ev_per_100.toFixed(1)}</div>` : ''}${(b.kelly!==null&&b.kelly!==undefined) ? `<div>Stake%: ${(b.kelly*100).toFixed(1)}%</div>` : ''}`;
+        right.className = 'text-right text-sm flex items-start';
         const del = document.createElement('button');
         del.className = 'px-2 py-1 rounded-lg border border-red-300 text-red-600 hover:bg-red-50';
         del.textContent = '−';
@@ -377,7 +388,6 @@ async function loadParlays() {
             await loadParlays();
           } catch (e) { alert('Error: ' + e.message); }
         };
-        right.appendChild(details);
         right.appendChild(del);
         row.appendChild(left);
         row.appendChild(right);
