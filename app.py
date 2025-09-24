@@ -1158,6 +1158,25 @@ def odds_diagnostics():
         return jsonify({'success': True, 'sport': sport, 'count': len(events), 'sample': preview})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+@app.route('/api/odds/event', methods=['GET'])
+def api_odds_event():
+    """Expose full odds grid for a specific game (all bookmakers/markets)."""
+    try:
+        from providers.odds_client import OddsClient
+        sport = (request.args.get('sport') or '').strip().lower()
+        game_id = request.args.get('game_id')
+        g = Game.query.get(int(game_id)) if game_id else None
+        if not g:
+            return jsonify({'success': False, 'error': 'Not found'}), 404
+        oc = OddsClient()
+        ev = oc.fetch_event_full(g.sport or sport, g.home_team, g.away_team)
+        # Lightweight normalize: include commence_time in iso and filter empty bookmakers
+        if not ev:
+            return jsonify({'success': True, 'event': None})
+        # Convert last_update to strings already handled in client; pass-through
+        return jsonify({'success': True, 'event': ev})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/seed_from_odds', methods=['POST'])
 def admin_seed_from_odds():

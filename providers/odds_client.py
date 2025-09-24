@@ -33,7 +33,8 @@ class OddsClient:
             # Allow construction; methods will no-op without key
             pass
         self.timeout_seconds = 15
-        self.regions = os.getenv('ODDS_REGIONS', 'us,us2')
+        # Broaden default coverage beyond MVP
+        self.regions = os.getenv('ODDS_REGIONS', 'us,us2,eu,uk')
         self.bookmakers_filter = self._parse_list(os.getenv('ODDS_BOOKMAKERS'))
         self.est_tz = pytz.timezone('US/Eastern')
 
@@ -84,6 +85,41 @@ class OddsClient:
         except Exception:
             pass
         return []
+
+    def fetch_event_full(self, sport: str, home_team: str, away_team: str) -> Optional[Dict]:
+        """
+        Return the full event dict from The Odds API for the given matchup, including all bookmakers and markets.
+        Shape (per The Odds API): { id, commence_time, home_team, away_team, bookmakers: [ { key, title, last_update, markets: [...] } ] }
+        """
+        sport_key = self.SPORT_KEYS.get((sport or '').lower())
+        if not sport_key or not self.api_key:
+            return None
+        url = f"{self.BASE_URL}/sports/{sport_key}/odds"
+        params = {
+            'apiKey': self.api_key,
+            'regions': self.regions,
+            'markets': 'h2h,spreads,totals',
+            'oddsFormat': 'american',
+        }
+        home_n = self._normalize(home_team)
+        away_n = self._normalize(away_team)
+        for _ in range(3):
+            try:
+                resp = self.session.get(url, params=params, timeout=self.timeout_seconds)
+                resp.raise_for_status()
+                events = resp.json() or []
+                for ev in events:
+                    if self._normalize(ev.get('home_team')) == home_n and self._normalize(ev.get('away_team')) == away_n:
+                        # Optionally filter bookmakers
+                        bms = ev.get('bookmakers') or []
+                        if self.bookmakers_filter:
+                            bms = [b for b in bms if b.get('key') in self.bookmakers_filter]
+                        ev['bookmakers'] = bms
+                        return ev
+                break
+            except Exception:
+                continue
+        return None
 
     def best_moneyline_prices(self, bookmakers: List[Dict], home_team: str, away_team: str) -> Dict[str, Optional[Tuple[float, str]]]:
         """
