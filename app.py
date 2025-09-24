@@ -302,6 +302,7 @@ class Game(db.Model):
             'away_moneyline': self.away_moneyline,
             'bookmaker': self.bookmaker,
             'odds_last_updated': self.odds_last_updated.isoformat() if self.odds_last_updated else None,
+            'is_odds_stale': (False if not self.odds_last_updated else ((datetime.utcnow() - self.odds_last_updated).total_seconds() > 12*3600)),
             'created_at': self.created_at.isoformat()
         }
 
@@ -1099,12 +1100,19 @@ def health_check():
             total_games = Game.query.count()
             recent_games = Game.query.filter(Game.status.in_(['upcoming', 'live'])).count()
             latest_collection = Game.query.order_by(Game.created_at.desc()).first()
+            # Stale odds ratio (older than 12h)
+            from datetime import datetime as _dt, timedelta as _td
+            now = _dt.utcnow()
+            stale_cut = now - _td(hours=12)
+            stale_count = Game.query.filter(Game.odds_last_updated.isnot(None), Game.odds_last_updated < stale_cut).count()
+            stale_ratio = (stale_count / max(1, total_games))
             
         return jsonify({
             'status': 'healthy',
             'total_games': total_games,
             'active_games': recent_games,
-            'last_update': latest_collection.created_at.isoformat() if latest_collection else None
+            'last_update': latest_collection.created_at.isoformat() if latest_collection else None,
+            'stale_odds_ratio': round(stale_ratio, 3)
         })
     except Exception as e:
         # Always return 200 so platform healthchecks pass even if DB is cold

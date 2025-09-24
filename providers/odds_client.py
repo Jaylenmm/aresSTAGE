@@ -324,6 +324,15 @@ class OddsClient:
             return None
         return sorted(bookmakers, key=parse, reverse=True)[0]
 
+    def pick_best_price_spread_total(self, bookmakers: List[Dict], home: str, away: str, spread_point: Optional[float], total_point: Optional[float]) -> Dict[str, Optional[Tuple[float, str]]]:
+        """
+        Convenience: return best prices for home/away at given spread, and over/under at given total.
+        """
+        return {
+            'spread': self.best_spread_prices(bookmakers, home, away, spread_point, (-spread_point if spread_point is not None else None)),
+            'total': self.best_total_prices(bookmakers, total_point)
+        }
+
     def _parse_time(self, value: Optional[str]) -> Optional[datetime]:
         if not value:
             return None
