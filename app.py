@@ -1170,6 +1170,9 @@ def api_odds_event():
             return jsonify({'success': False, 'error': 'Not found'}), 404
         oc = OddsClient()
         ev = oc.fetch_event_full(g.sport or sport, g.home_team, g.away_team)
+        # If not found, attempt with reversed designation just in case
+        if not ev:
+            ev = oc.fetch_event_full(g.sport or sport, g.away_team, g.home_team)
         # Lightweight normalize: include commence_time in iso and filter empty bookmakers
         if not ev:
             return jsonify({'success': True, 'event': None})

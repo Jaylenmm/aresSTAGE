@@ -103,14 +103,43 @@ class OddsClient:
         }
         home_n = self._normalize(home_team)
         away_n = self._normalize(away_team)
+        # Canonical aliases to improve matching across providers
+        try:
+            from providers.team_aliases import canonicalize_team_name
+            home_can = self._normalize(canonicalize_team_name(home_team))
+            away_can = self._normalize(canonicalize_team_name(away_team))
+        except Exception:
+            home_can, away_can = home_n, away_n
         for _ in range(3):
             try:
                 resp = self.session.get(url, params=params, timeout=self.timeout_seconds)
                 resp.raise_for_status()
                 events = resp.json() or []
+                # Try strict canonical match
                 for ev in events:
-                    if self._normalize(ev.get('home_team')) == home_n and self._normalize(ev.get('away_team')) == away_n:
-                        # Optionally filter bookmakers
+                    ev_home = self._normalize(ev.get('home_team'))
+                    ev_away = self._normalize(ev.get('away_team'))
+                    if (ev_home == home_can and ev_away == away_can) or (ev_home == home_n and ev_away == away_n):
+                        bms = ev.get('bookmakers') or []
+                        if self.bookmakers_filter:
+                            bms = [b for b in bms if b.get('key') in self.bookmakers_filter]
+                        ev['bookmakers'] = bms
+                        return ev
+                # Try reversed home/away if provider differs on designation
+                for ev in events:
+                    ev_home = self._normalize(ev.get('home_team'))
+                    ev_away = self._normalize(ev.get('away_team'))
+                    if (ev_home == away_can and ev_away == home_can) or (ev_home == away_n and ev_away == home_n):
+                        bms = ev.get('bookmakers') or []
+                        if self.bookmakers_filter:
+                            bms = [b for b in bms if b.get('key') in self.bookmakers_filter]
+                        ev['bookmakers'] = bms
+                        return ev
+                # Fallback fuzzy: both names substrings
+                for ev in events:
+                    ev_home = self._normalize(ev.get('home_team') or '')
+                    ev_away = self._normalize(ev.get('away_team') or '')
+                    if (home_can in ev_home or home_n in ev_home) and (away_can in ev_away or away_n in ev_away):
                         bms = ev.get('bookmakers') or []
                         if self.bookmakers_filter:
                             bms = [b for b in bms if b.get('key') in self.bookmakers_filter]

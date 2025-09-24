@@ -256,6 +256,11 @@ async function renderGameCards(games) {
           const d = await r.json();
           if (d && d.success && d.event) {
             const bms = d.event.bookmakers || [];
+            if (!bms.length) {
+              oddsPanel.innerHTML = '<div class="text-slate-500 text-sm">No bookmakers returned for this event.</div>';
+              oddsPanel.dataset.loaded = '1';
+              return;
+            }
             const grid = document.createElement('div');
             grid.className = 'space-y-2';
             bms.forEach(bm => {
