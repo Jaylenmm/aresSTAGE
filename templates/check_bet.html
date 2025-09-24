@@ -240,62 +240,7 @@ async function renderGameCards(games) {
     `;
     card.appendChild(grid);
 
-    // Odds grid toggle
-    const oddsWrap = document.createElement('div');
-    oddsWrap.className = 'mt-2';
-    const oddsBtn = document.createElement('button');
-    oddsBtn.className = 'text-sm underline text-slate-700';
-    oddsBtn.textContent = 'Show full odds grid';
-    const oddsPanel = document.createElement('div');
-    oddsPanel.className = 'mt-2 hidden';
-    oddsBtn.onclick = async () => {
-      if (!oddsPanel.dataset.loaded) {
-        oddsPanel.innerHTML = '<div class="text-slate-500 text-sm">Loading odds…</div>';
-        try {
-          const r = await fetch(`/api/odds/event?sport=${encodeURIComponent(g.sport||'')}&game_id=${encodeURIComponent(g.game_id)}`);
-          const d = await r.json();
-          if (d && d.success && d.event) {
-            const bms = d.event.bookmakers || [];
-            if (!bms.length) {
-              oddsPanel.innerHTML = '<div class="text-slate-500 text-sm">No bookmakers returned for this event.</div>';
-              oddsPanel.dataset.loaded = '1';
-              return;
-            }
-            const grid = document.createElement('div');
-            grid.className = 'space-y-2';
-            bms.forEach(bm => {
-              const row = document.createElement('div');
-              row.className = 'rounded-xl border border-slate-200 p-2';
-              const title = document.createElement('div');
-              title.className = 'text-xs uppercase text-slate-600';
-              title.textContent = bm.title || bm.key;
-              row.appendChild(title);
-              (bm.markets||[]).forEach(m => {
-                const mdiv = document.createElement('div');
-                mdiv.className = 'text-xs text-slate-700 mt-1';
-                const label = m.key;
-                const lines = (m.outcomes||[]).map(o => `${o.name}${o.point!==undefined?` ${o.point}`:''} (${o.price>0?'+':''}${o.price})`).join(' · ');
-                mdiv.textContent = `${label}: ${lines}`;
-                row.appendChild(mdiv);
-              });
-              grid.appendChild(row);
-            });
-            oddsPanel.innerHTML = '';
-            oddsPanel.appendChild(grid);
-            oddsPanel.dataset.loaded = '1';
-          } else {
-            oddsPanel.innerHTML = '<div class="text-slate-500 text-sm">No odds available.</div>';
-          }
-        } catch {
-          oddsPanel.innerHTML = '<div class="text-slate-500 text-sm">Failed to load odds.</div>';
-        }
-      }
-      oddsPanel.classList.toggle('hidden');
-      oddsBtn.textContent = oddsPanel.classList.contains('hidden') ? 'Show full odds grid' : 'Hide full odds grid';
-    };
-    oddsWrap.appendChild(oddsBtn);
-    oddsWrap.appendChild(oddsPanel);
-    card.appendChild(oddsWrap);
+    // (Reverted) no full odds grid toggle for stability
 
     // Picks (auto-expanded)
     const picks = document.createElement('div');

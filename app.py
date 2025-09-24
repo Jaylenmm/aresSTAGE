@@ -134,7 +134,7 @@ class DataScheduler:
         except Exception as e:
             pass
 
-USE_THREAD_SCHEDULER = os.getenv('USE_THREAD_SCHEDULER', 'true').lower() == 'true'
+USE_THREAD_SCHEDULER = os.getenv('USE_THREAD_SCHEDULER', 'false').lower() == 'true'
 data_scheduler = DataScheduler() if USE_THREAD_SCHEDULER else None
 
 def _now_est_naive():
@@ -160,13 +160,7 @@ def _rollover_game_statuses():
             starting = Game.query.filter(Game.status == 'upcoming', Game.date <= now_est, Game.date >= past_cutoff).all()
             for g in starting:
                 g.status = 'live'
-            # Mark odds stale if last update older than 12 hours
-            from datetime import timedelta as _td
-            stale_cutoff = now_est - _td(hours=12)
-            stale_games = Game.query.filter(Game.odds_last_updated.isnot(None), Game.odds_last_updated < stale_cutoff).all()
-            for g in stale_games:
-                g.is_odds_stale = True
-            if past or starting or stale_games:
+            if past or starting:
                 db.session.commit()
     except Exception:
         pass
@@ -187,8 +181,6 @@ def ensure_game_schema():
                 ddl_statements.append("ALTER TABLE game ADD COLUMN bookmaker VARCHAR(100)")
             if 'odds_last_updated' not in columns:
                 ddl_statements.append("ALTER TABLE game ADD COLUMN odds_last_updated TIMESTAMP")
-            if 'is_odds_stale' not in columns:
-                ddl_statements.append("ALTER TABLE game ADD COLUMN is_odds_stale BOOLEAN DEFAULT 1")
             # SavedBet metric columns runtime-migration (SQLite-friendly best effort)
             try:
                 sb_columns = {col['name'] for col in inspector.get_columns('saved_bet')}
@@ -216,29 +208,6 @@ def ensure_game_schema():
                                 continue
                 except Exception:
                     pass
-            # Ensure odds snapshot table exists
-            try:
-                existing_tables = inspector.get_table_names()
-                if 'event_odds_snapshot' not in existing_tables:
-                    with engine.begin() as conn:
-                        conn.execute(text(
-                            """
-                            CREATE TABLE IF NOT EXISTS event_odds_snapshot (
-                              id INTEGER PRIMARY KEY,
-                              game_id INTEGER NOT NULL,
-                              sport VARCHAR(50) NOT NULL,
-                              timestamp TIMESTAMP,
-                              market VARCHAR(32) NOT NULL,
-                              bookmaker VARCHAR(100),
-                              home_price FLOAT,
-                              away_price FLOAT,
-                              point_home FLOAT,
-                              point_total FLOAT
-                            )
-                            """
-                        ))
-            except Exception:
-                pass
     except Exception:
         pass
 
@@ -308,7 +277,6 @@ class Game(db.Model):
     away_moneyline = db.Column(db.Float, nullable=True)
     bookmaker = db.Column(db.String(100), nullable=True)
     odds_last_updated = db.Column(db.DateTime, nullable=True)
-    is_odds_stale = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationship to predictions
@@ -334,7 +302,6 @@ class Game(db.Model):
             'away_moneyline': self.away_moneyline,
             'bookmaker': self.bookmaker,
             'odds_last_updated': self.odds_last_updated.isoformat() if self.odds_last_updated else None,
-            'is_odds_stale': bool(self.is_odds_stale),
             'created_at': self.created_at.isoformat()
         }
 
@@ -351,17 +318,7 @@ class Prediction(db.Model):
     def __repr__(self):
         return f'<Prediction: {self.predicted_winner} (confidence: {self.confidence})>'
 
-class EventOddsSnapshot(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    game_id = db.Column(db.Integer, db.ForeignKey('game.id'), nullable=False)
-    sport = db.Column(db.String(50), nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    market = db.Column(db.String(32), nullable=False)  # h2h/spreads/totals
-    bookmaker = db.Column(db.String(100), nullable=True)
-    home_price = db.Column(db.Float, nullable=True)
-    away_price = db.Column(db.Float, nullable=True)
-    point_home = db.Column(db.Float, nullable=True)
-    point_total = db.Column(db.Float, nullable=True)
+ 
 
 class Parlay(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -1266,28 +1223,7 @@ def odds_diagnostics():
         return jsonify({'success': True, 'sport': sport, 'count': len(events), 'sample': preview})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-@app.route('/api/odds/event', methods=['GET'])
-def api_odds_event():
-    """Expose full odds grid for a specific game (all bookmakers/markets)."""
-    try:
-        from providers.odds_client import OddsClient
-        sport = (request.args.get('sport') or '').strip().lower()
-        game_id = request.args.get('game_id')
-        g = Game.query.get(int(game_id)) if game_id else None
-        if not g:
-            return jsonify({'success': False, 'error': 'Not found'}), 404
-        oc = OddsClient()
-        ev = oc.fetch_event_full(g.sport or sport, g.home_team, g.away_team)
-        # If not found, attempt with reversed designation just in case
-        if not ev:
-            ev = oc.fetch_event_full(g.sport or sport, g.away_team, g.home_team)
-        # Lightweight normalize: include commence_time in iso and filter empty bookmakers
-        if not ev:
-            return jsonify({'success': True, 'event': None})
-        # Convert last_update to strings already handled in client; pass-through
-        return jsonify({'success': True, 'event': ev})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+ 
 
 @app.route('/api/admin/seed_from_odds', methods=['POST'])
 def admin_seed_from_odds():
@@ -1302,22 +1238,7 @@ def admin_seed_from_odds():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/admin/run_migrations', methods=['POST'])
-def admin_run_migrations():
-    """Run runtime migrations to ensure new columns/tables exist (safe to call multiple times)."""
-    try:
-        # Re-run database initialization and schema ensure
-        ensure_database_initialized()
-        ensure_game_schema()
-        # Return a quick summary of current table columns for verification
-        with app.app_context():
-            engine = db.engine
-            insp = inspect(engine)
-            game_cols = [c['name'] for c in insp.get_columns('game')]
-            snapshots = 'event_odds_snapshot' in insp.get_table_names()
-        return jsonify({'success': True, 'game_columns': game_cols, 'has_event_odds_snapshot': snapshots})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+ 
 
 @app.route('/predict', methods=['POST'])
 def make_prediction():
