@@ -70,6 +70,8 @@ class DataScheduler:
                     
                     collector = SportsDataCollector()
                     games = collector.collect_all_games()
+                    # Roll status forward so we never keep stale 'upcoming' games around
+                    _rollover_game_statuses()
                     
                     # Also clean up old predictions
                     self._cleanup_old_predictions()
@@ -100,8 +102,36 @@ class DataScheduler:
         except Exception as e:
             pass
 
-USE_THREAD_SCHEDULER = os.getenv('USE_THREAD_SCHEDULER', 'false').lower() == 'true'
+USE_THREAD_SCHEDULER = os.getenv('USE_THREAD_SCHEDULER', 'true').lower() == 'true'
 data_scheduler = DataScheduler() if USE_THREAD_SCHEDULER else None
+
+def _now_est_naive():
+    try:
+        from utils.time_utils import now_est_naive
+        return now_est_naive()
+    except Exception:
+        from datetime import datetime
+        return datetime.now()
+
+def _rollover_game_statuses():
+    """Mark past games completed and set near-term games to live. Keeps only ongoing/upcoming visible."""
+    try:
+        with app.app_context():
+            from datetime import timedelta
+            now_est = _now_est_naive()
+            # Mark clearly past games as completed (older than 6 hours ago)
+            past_cutoff = now_est - timedelta(hours=6)
+            past = Game.query.filter(Game.status.in_(['upcoming','live']), Game.date < past_cutoff).all()
+            for g in past:
+                g.status = 'completed'
+            # Mark events started within last 6 hours as live if still upcoming
+            starting = Game.query.filter(Game.status == 'upcoming', Game.date <= now_est, Game.date >= past_cutoff).all()
+            for g in starting:
+                g.status = 'live'
+            if past or starting:
+                db.session.commit()
+    except Exception:
+        pass
 
 def ensure_game_schema():
     """Ensure new odds columns exist on Game table (simple runtime migration)."""
@@ -1007,6 +1037,7 @@ def collect_sports_data():
         # Force a complete refresh
         collector = SportsDataCollector()
         games = collector.collect_all_games()
+        _rollover_game_statuses()
         
         # Get updated game count
         with app.app_context():

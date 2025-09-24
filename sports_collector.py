@@ -262,6 +262,12 @@ class SportsDataCollector:
             print(f"Odds updated on {updated} games")
         except Exception:
             pass
+        # Final pass: roll forward statuses to keep list fresh
+        try:
+            from app import _rollover_game_statuses
+            _rollover_game_statuses()
+        except Exception:
+            pass
         return all_games
 
     def _update_odds_for_upcoming(self):
