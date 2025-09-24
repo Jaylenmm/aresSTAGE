@@ -1302,6 +1302,23 @@ def admin_seed_from_odds():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/admin/run_migrations', methods=['POST'])
+def admin_run_migrations():
+    """Run runtime migrations to ensure new columns/tables exist (safe to call multiple times)."""
+    try:
+        # Re-run database initialization and schema ensure
+        ensure_database_initialized()
+        ensure_game_schema()
+        # Return a quick summary of current table columns for verification
+        with app.app_context():
+            engine = db.engine
+            insp = inspect(engine)
+            game_cols = [c['name'] for c in insp.get_columns('game')]
+            snapshots = 'event_odds_snapshot' in insp.get_table_names()
+        return jsonify({'success': True, 'game_columns': game_cols, 'has_event_odds_snapshot': snapshots})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/predict', methods=['POST'])
 def make_prediction():
     """Make a prediction for a game"""
