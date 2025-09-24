@@ -8,6 +8,7 @@ from sqlalchemy import inspect, text
 from prediction_engine import PredictionEngine
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from markupsafe import Markup
 from utils.pricing import implied_prob as _implied_prob, ev_from_prob_and_odds as _ev_from_prob_and_odds
 
 # Initialize Flask app
@@ -35,6 +36,37 @@ login_manager.init_app(app)
 
 # Initialize prediction engine
 prediction_engine = PredictionEngine()
+# --- Jinja filters ---
+def namecase(value: str) -> str:
+    try:
+        s = (value or '').strip()
+        if not s:
+            return ''
+        # Handle hyphens and apostrophes properly (e.g., O'Neal, St. Louis)
+        parts = []
+        for token in s.split(' '):
+            if not token:
+                parts.append(token)
+                continue
+            subtokens = token.split('-')
+            subcased = []
+            for st in subtokens:
+                st_l = st.lower()
+                if "'" in st_l:
+                    apos = st_l.split("'")
+                    apos = [a.capitalize() if a else a for a in apos]
+                    subcased.append("'".join(apos))
+                else:
+                    subcased.append(st_l.capitalize())
+            parts.append('-'.join(subcased))
+        return ' '.join(parts)
+    except Exception:
+        try:
+            return str(value)
+        except Exception:
+            return ''
+
+app.jinja_env.filters['namecase'] = namecase
 
 # Background scheduler for automatic data collection
 class DataScheduler:

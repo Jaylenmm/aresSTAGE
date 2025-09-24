@@ -23,7 +23,7 @@
     {% for g in games %}
     <a href="/check-your-bet?s={{ g.home_team | urlencode }}" class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3 block">
       <div class="text-xs uppercase tracking-wide text-slate-700">{{ g.sport }}</div>
-      <div class="mt-1 font-semibold">{{ g.away_team|title }} @ {{ g.home_team|title }}</div>
+      <div class="mt-1 font-semibold">{{ g.away_team|namecase }} @ {{ g.home_team|namecase }}</div>
       <div class="text-sm text-slate-700">{{ g.date.strftime('%a %b %d, %I:%M %p') }} ET</div>
       <div class="mt-2 grid grid-cols-4 gap-2 text-sm">
         <div>
