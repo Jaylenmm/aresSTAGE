@@ -286,7 +286,7 @@ class SportsDataCollector:
                 for o in odds_list:
                     key = (canonicalize_team_name(sport, o['home_team']), canonicalize_team_name(sport, o['away_team']), sport)
                     odds_by_key[key] = o
-            # Update games
+            # Update games and snapshot odds
             updated = 0
             for g in upcoming_games:
                 home_c = canonicalize_team_name(g.sport, g.home_team)
@@ -305,6 +305,22 @@ class SportsDataCollector:
                     g.away_moneyline = match.get('away_moneyline', g.away_moneyline)
                     g.bookmaker = match.get('bookmaker', g.bookmaker)
                     g.odds_last_updated = match.get('last_update') or g.odds_last_updated
+                    g.is_odds_stale = False
+                    try:
+                        from app import EventOddsSnapshot
+                        snap = EventOddsSnapshot(
+                            game_id=g.id,
+                            sport=g.sport,
+                            market='h2h',
+                            bookmaker=g.bookmaker,
+                            home_price=g.home_moneyline,
+                            away_price=g.away_moneyline,
+                            point_home=g.spread,
+                            point_total=g.total
+                        )
+                        db.session.add(snap)
+                    except Exception:
+                        pass
                     updated += 1
             if updated:
                 db.session.commit()

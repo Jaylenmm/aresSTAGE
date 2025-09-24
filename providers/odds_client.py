@@ -302,6 +302,7 @@ class OddsClient:
             total = self._extract_total(markets)
 
             results.append({
+                'event_id': ev.get('id'),
                 'home_team': home,
                 'away_team': away,
                 'commence_time': commence_time,
