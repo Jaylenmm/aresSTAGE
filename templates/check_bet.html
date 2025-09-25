@@ -311,6 +311,17 @@ function closeSaveModal() {
 }
 async function confirmSaveBet() {
   if (!pendingBet) return;
+  // If not logged in, show a simple prompt
+  try {
+    const ping = await fetch('/api/parlays');
+    const pj = await ping.json();
+    if (pj && pj.success && Array.isArray(pj.parlays) && pj.parlays.length===0 && ping.status===200) {
+      // could still be logged in with no parlays; proceed
+    }
+  } catch (e) {
+    alert('Please log in to save picks.');
+    return;
+  }
   const isParlay = document.getElementById('opt-parlay').checked;
   const group_type = isParlay ? 'parlay' : 'single';
   let parlay_name = '';

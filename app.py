@@ -198,6 +198,13 @@ def ensure_game_schema():
                 ddl_statements.append("ALTER TABLE saved_bet ADD COLUMN ev_per_100 FLOAT")
             if 'kelly' not in sb_columns:
                 ddl_statements.append("ALTER TABLE saved_bet ADD COLUMN kelly FLOAT")
+            # Parlay ownership
+            try:
+                parlay_columns = {col['name'] for col in inspector.get_columns('parlay')}
+            except Exception:
+                parlay_columns = set()
+            if 'user_id' not in parlay_columns:
+                ddl_statements.append("ALTER TABLE parlay ADD COLUMN user_id INTEGER")
             if ddl_statements:
                 try:
                     with engine.begin() as conn:
@@ -326,6 +333,7 @@ class Parlay(db.Model):
     name = db.Column(db.String(120), nullable=False)
     status = db.Column(db.String(20), default='active')  # active/completed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
 class SavedBet(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -875,26 +883,26 @@ def api_save_bet():
         parlay_name = (data.get('parlay_name') or '').strip()
 
         # Resolve or create parlay
-        active_parlays = Parlay.query.filter_by(status='active').all()
+        active_parlays = Parlay.query.filter_by(status='active', user_id=(current_user.id if current_user.is_authenticated else None)).all()
         if group_type == 'parlay':
             if not parlay_name:
                 return jsonify({'success': False, 'error': 'parlay_name required'}), 400
-            parlay = Parlay.query.filter_by(name=parlay_name, status='active').first()
+            parlay = Parlay.query.filter_by(name=parlay_name, status='active', user_id=(current_user.id if current_user.is_authenticated else None)).first()
             if not parlay:
                 # Enforce up to 5 active setups
                 if len(active_parlays) >= 5:
                     return jsonify({'success': False, 'error': 'Maximum 5 active setups reached'}), 400
-                parlay = Parlay(name=parlay_name)
+                parlay = Parlay(name=parlay_name, user_id=(current_user.id if current_user.is_authenticated else None))
                 db.session.add(parlay)
                 db.session.flush()
         else:  # single -> create a dedicated setup
             # Reuse a single bucket named Single-# if under 5
             # Prefer a parlay named 'Singles' if exists and <5 legs
-            parlay = Parlay.query.filter_by(name='Singles', status='active').first()
+            parlay = Parlay.query.filter_by(name='Singles', status='active', user_id=(current_user.id if current_user.is_authenticated else None)).first()
             if not parlay:
                 if len(active_parlays) >= 5:
                     return jsonify({'success': False, 'error': 'Maximum 5 active setups reached'}), 400
-                parlay = Parlay(name='Singles')
+                parlay = Parlay(name='Singles', user_id=(current_user.id if current_user.is_authenticated else None))
                 db.session.add(parlay)
                 db.session.flush()
 
@@ -967,8 +975,10 @@ def api_save_bet():
 @app.route('/api/parlays', methods=['GET'])
 def api_list_parlays():
     try:
-        # Active parlays only; a parlay is completed when all linked games are completed
-        parlays = Parlay.query.filter_by(status='active').all()
+        # Active parlays for current user only; completed when all linked games are completed
+        if not current_user.is_authenticated:
+            return jsonify({'success': True, 'parlays': []})
+        parlays = Parlay.query.filter_by(status='active', user_id=current_user.id).all()
         result = []
         for p in parlays:
             bets = []
@@ -1022,6 +1032,9 @@ def api_delete_bet():
         if not bet:
             return jsonify({'success': False, 'error': 'Not found'}), 404
         parlay = bet.parlay
+        # Authorization: only owner can delete
+        if parlay and current_user.is_authenticated and parlay.user_id != current_user.id:
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
         db.session.delete(bet)
         db.session.commit()
         # Optionally mark parlay completed if empty
@@ -1362,7 +1375,7 @@ if __name__ == '__main__':
     
     # Start background scheduler if enabled
     if data_scheduler:
-        data_scheduler.start()
+    data_scheduler.start()
     
     try:
         # Run the app
@@ -1371,8 +1384,8 @@ if __name__ == '__main__':
         app.run(debug=debug, host='0.0.0.0', port=port)
     except KeyboardInterrupt:
         if data_scheduler:
-            data_scheduler.stop()
+        data_scheduler.stop()
     except Exception as e:
         if data_scheduler:
-            data_scheduler.stop()
+        data_scheduler.stop()
         raise
