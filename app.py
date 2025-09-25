@@ -875,6 +875,9 @@ def api_check_bet_options():
 def api_save_bet():
     """Save a user's selected bet and our probability for later accuracy checks."""
     try:
+        # Require login to save
+        if not current_user.is_authenticated:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
         data = request.get_json() or {}
         # Minimal required: bet type and sport (sport can be inferred from game if provided)
         if not data.get('type'):

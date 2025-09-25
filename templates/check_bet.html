@@ -8,7 +8,10 @@
     <div class="bg-white text-black rounded-2xl border border-slate-200 shadow-sm p-3">
         <div class="flex items-center justify-between">
             <h2 class="text-base font-semibold">What you're cookin'</h2>
-            <button id="refresh-parlays" class="text-sm px-3 py-1 rounded-xl border border-slate-300">Refresh</button>
+            <div class="flex items-center gap-2">
+              <a href="/login" id="login-cta" class="hidden text-sm px-3 py-1 rounded-xl border border-slate-300">Log in</a>
+              <button id="refresh-parlays" class="text-sm px-3 py-1 rounded-xl border border-slate-300">Refresh</button>
+            </div>
         </div>
         <div id="parlays" class="mt-3 space-y-3">
             <div class="text-slate-600 text-sm">Nothing here. Search for your picks below!</div>
@@ -475,6 +478,18 @@ document.getElementById('opt-parlay').addEventListener('change', async () => {
 updateParlayControls();
 // Initial load
 loadParlays();
+
+// Show login CTA if anonymous (parlays endpoint will return [] but we need a more explicit check)
+(async () => {
+  try {
+    const resp = await fetch('/api/health');
+    // If health is reachable, still unknown auth; ping a protected list endpoint
+    const p = await fetch('/api/parlays');
+    if (p.status === 401 || p.status === 403) {
+      document.getElementById('login-cta').classList.remove('hidden');
+    }
+  } catch {}
+})();
 </script>
 {% endblock %}
 
