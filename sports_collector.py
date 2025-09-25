@@ -16,6 +16,7 @@ from app import app, db, Game
 from providers.sportsdata_client import SportsDataIOClient
 from providers.odds_client import OddsClient
 from providers.team_aliases import canonicalize_team_name
+from providers.registry import get_enabled_sports, should_seed_from_odds
 
 class SportsDataCollector:
     def __init__(self):
@@ -197,38 +198,40 @@ class SportsDataCollector:
         """Main method to collect all sports data"""
         all_games = []
         
+        enabled = get_enabled_sports()
+        
         # NFL
-        nfl = self.collect_nfl_games()
+        nfl = self.collect_nfl_games() if 'nfl' in enabled else []
         print(f"NFL schedule fetched: {len(nfl)} games (lookahead {self.lookahead_days}d)")
         all_games.extend(nfl)
         time.sleep(0.5)
         # NBA
-        nba = self.collect_nba_games()
+        nba = self.collect_nba_games() if 'nba' in enabled else []
         print(f"NBA schedule fetched: {len(nba)} games (lookahead {self.lookahead_days}d)")
         all_games.extend(nba)
         time.sleep(0.5)
         # MLB
-        mlb = self.collect_mlb_games()
+        mlb = self.collect_mlb_games() if 'mlb' in enabled else []
         print(f"MLB schedule fetched: {len(mlb)} games (lookahead {self.lookahead_days}d)")
         all_games.extend(mlb)
         time.sleep(0.5)
         # NHL
-        nhl = self.collect_nhl_games()
+        nhl = self.collect_nhl_games() if 'nhl' in enabled else []
         print(f"NHL schedule fetched: {len(nhl)} games (lookahead {self.lookahead_days}d)")
         all_games.extend(nhl)
         time.sleep(0.5)
         # CFB
-        cfb = self.collect_cfb_games()
+        cfb = self.collect_cfb_games() if 'cfb' in enabled else []
         print(f"CFB schedule fetched: {len(cfb)} games (lookahead {self.lookahead_days}d)")
         all_games.extend(cfb)
         time.sleep(0.5)
         # Soccer (best-effort)
-        soccer = self.collect_soccer_games()
+        soccer = self.collect_soccer_games() if 'soccer' in enabled else []
         print(f"Soccer schedule fetched: {len(soccer)} events (lookahead {self.lookahead_days}d)")
         all_games.extend(soccer)
         time.sleep(0.5)
         # Golf (tournaments as events)
-        golf = self.collect_golf_events()
+        golf = self.collect_golf_events() if 'golf' in enabled else []
         print(f"Golf events fetched: {len(golf)} (lookahead {self.lookahead_days}d)")
         all_games.extend(golf)
         
@@ -244,7 +247,7 @@ class SportsDataCollector:
                 }
                 for sport, lst in per_sport_lists.items():
                     count = len(lst) if lst is not None else 0
-                    if count == 0:
+                    if count == 0 and should_seed_from_odds(sport):
                         seeded = self._build_games_from_odds_for_sport(sport)
                         if seeded:
                             print(f"Per-sport fallback created {len(seeded)} {sport.upper()} events from odds")
