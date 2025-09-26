@@ -13,7 +13,8 @@ from utils.pricing import implied_prob as _implied_prob, ev_from_prob_and_odds a
 
 # Initialize Flask app
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24))
+# IMPORTANT: Use a stable SECRET_KEY in production; fallback here keeps sessions stable across workers
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'ares-alpha-secret')
 # Session cookie hardening and persistence
 app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -39,6 +40,14 @@ db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
+# Keep sessions alive for authenticated users
+@app.before_request
+def _keep_session_alive():
+    try:
+        if current_user.is_authenticated:
+            session.permanent = True
+    except Exception:
+        pass
 
 # Initialize prediction engine
 prediction_engine = PredictionEngine()

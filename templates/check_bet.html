@@ -339,8 +339,10 @@ async function confirmSaveBet() {
     const res = await fetch('/api/bets/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(payload)
     });
+    if (res.status === 401) { alert('Please log in to save picks.'); window.location.href = '/login'; return; }
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed');
     closeSaveModal();
