@@ -15,10 +15,11 @@ from utils.pricing import implied_prob as _implied_prob, ev_from_prob_and_odds a
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24))
 # Session cookie hardening and persistence
-app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=14)
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+app.config['REMEMBER_COOKIE_SECURE'] = False
 
 # Database configuration
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -1338,6 +1339,8 @@ def login():
             login_user(user, remember=remember, duration=app.config.get('REMEMBER_COOKIE_DURATION'))
             # Make session permanent for longer lifetime
             session.permanent = True
+            # Force-set cookies for cross-route persistence
+            session.modified = True
             return redirect(url_for('home'))
         return render_template('login.html', error='Invalid credentials')
     return render_template('login.html')
