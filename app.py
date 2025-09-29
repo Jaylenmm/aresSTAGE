@@ -755,13 +755,12 @@ def api_check_bet_games():
 def api_player_search():
     """Autosuggest players from current props (NBA only for now)."""
     try:
-        from providers.odds_client import OddsClient
+        from providers import get_props_client
         q = (request.args.get('q') or '').strip().lower()
         if not q:
             return jsonify({'success': True, 'players': []})
-        oc = OddsClient()
+        oc = get_props_client()
         props = []
-        # Try NFL and MLB first given current seasons
         for sp in ['nfl','mlb','nba']:
             props.extend(oc.fetch_player_props_for_sport(sp))
         names = sorted({p['player_name'] for p in props if q in (p.get('player_name','').lower())})[:20]
@@ -773,11 +772,11 @@ def api_player_search():
 def api_player_props():
     """Return props for a player name (NBA points/rebounds/assists)."""
     try:
-        from providers.odds_client import OddsClient
+        from providers import get_props_client
         name = (request.args.get('name') or '').strip().lower()
         if not name:
             return jsonify({'success': True, 'props': []})
-        oc = OddsClient()
+        oc = get_props_client()
         props = []
         for sp in ['nfl','mlb','nba']:
             props.extend(oc.fetch_player_props_for_sport(sp))
