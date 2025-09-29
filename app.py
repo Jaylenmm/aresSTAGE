@@ -105,7 +105,10 @@ class DataScheduler:
     def _schedule_loop(self):
         """Main scheduling loop with intelligent refresh"""
         last_collection = 0
-        collection_interval = 1800  # 30 minutes for more frequent updates
+        try:
+            collection_interval = int(os.getenv('COLLECT_INTERVAL_SECONDS', '600'))
+        except Exception:
+            collection_interval = 600
         
         while self.running:
             current_time = time.time()
@@ -124,6 +127,10 @@ class DataScheduler:
                     self._cleanup_old_predictions()
                     
                     last_collection = current_time
+                    try:
+                        app.config['LAST_COLLECT_TS'] = datetime.utcnow()
+                    except Exception:
+                        pass
                     
                 except Exception as e:
                     pass
@@ -149,7 +156,7 @@ class DataScheduler:
         except Exception as e:
             pass
 
-USE_THREAD_SCHEDULER = os.getenv('USE_THREAD_SCHEDULER', 'false').lower() == 'true'
+USE_THREAD_SCHEDULER = os.getenv('USE_THREAD_SCHEDULER', 'true').lower() == 'true'
 data_scheduler = DataScheduler() if USE_THREAD_SCHEDULER else None
 
 def _now_est_naive():
@@ -1142,7 +1149,8 @@ def health_check():
             'total_games': total_games,
             'active_games': recent_games,
             'last_update': latest_collection.created_at.isoformat() if latest_collection else None,
-            'stale_odds_ratio': round(stale_ratio, 3)
+            'stale_odds_ratio': round(stale_ratio, 3),
+            'last_collect_ts': (app.config.get('LAST_COLLECT_TS').isoformat() if app.config.get('LAST_COLLECT_TS') else None)
         })
     except Exception as e:
         # Always return 200 so platform healthchecks pass even if DB is cold
