@@ -11,3 +11,8 @@ restartPolicyMaxRetries = 10
 [env]
 FLASK_ENV = "production"
 FLASK_DEBUG = "false"
+SPORT_ENABLED = "nfl,mlb"
+USE_THREAD_SCHEDULER = "true"
+COLLECT_INTERVAL_SECONDS = "600"
+PREFER_ESPN_SCHEDULE = "true"
+ESPN_DAYS_LOOKAHEAD = "7"

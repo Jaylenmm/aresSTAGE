@@ -1323,6 +1323,83 @@ def admin_reseed():
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/debug/data-collection', methods=['GET'])
+def debug_data_collection():
+    """Debug endpoint to test data collection step by step."""
+    try:
+        debug_info = {}
+        
+        # Test environment
+        debug_info['environment'] = {
+            'SPORT_ENABLED': os.getenv('SPORT_ENABLED'),
+            'USE_THREAD_SCHEDULER': os.getenv('USE_THREAD_SCHEDULER'),
+            'PREFER_ESPN_SCHEDULE': os.getenv('PREFER_ESPN_SCHEDULE'),
+            'ESPN_DAYS_LOOKAHEAD': os.getenv('ESPN_DAYS_LOOKAHEAD'),
+            'COLLECT_INTERVAL_SECONDS': os.getenv('COLLECT_INTERVAL_SECONDS'),
+        }
+        
+        # Test provider registry
+        try:
+            from providers.registry import get_enabled_sports
+            enabled = get_enabled_sports()
+            debug_info['enabled_sports'] = enabled
+        except Exception as e:
+            debug_info['registry_error'] = str(e)
+            enabled = []
+        
+        # Test ESPN client directly  
+        try:
+            from providers.espn_client import ESPNClient
+            espn = ESPNClient()
+            nfl_games = espn.fetch_upcoming_games('nfl', 7)
+            debug_info['espn_nfl_games'] = len(nfl_games)
+            debug_info['sample_nfl_games'] = [
+                {
+                    'away_team': g['away_team'],
+                    'home_team': g['home_team'], 
+                    'date': g['date'].isoformat() if g['date'] else None,
+                    'status': g['status']
+                } for g in nfl_games[:3]
+            ]
+        except Exception as e:
+            debug_info['espn_error'] = str(e)
+        
+        # Test collector
+        try:
+            os.environ['PREFER_ESPN_SCHEDULE'] = 'true'
+            from sports_collector import SportsDataCollector
+            collector = SportsDataCollector()
+            collected_nfl = collector.collect_nfl_games()
+            debug_info['collector_nfl_games'] = len(collected_nfl)
+        except Exception as e:
+            debug_info['collector_error'] = str(e)
+        
+        # Test database state
+        try:
+            with app.app_context():
+                total_games = Game.query.count()
+                nfl_games = Game.query.filter_by(sport='nfl').count()
+                recent_nfl = Game.query.filter_by(sport='nfl').order_by(Game.created_at.desc()).limit(3).all()
+                debug_info['database'] = {
+                    'total_games': total_games,
+                    'nfl_games': nfl_games,
+                    'recent_nfl': [
+                        {
+                            'away_team': g.away_team,
+                            'home_team': g.home_team,
+                            'date': g.date.isoformat() if g.date else None,
+                            'status': g.status,
+                            'created_at': g.created_at.isoformat() if g.created_at else None
+                        } for g in recent_nfl
+                    ]
+                }
+        except Exception as e:
+            debug_info['database_error'] = str(e)
+        
+        return jsonify({'success': True, 'debug_info': debug_info})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
  
 
 @app.route('/predict', methods=['POST'])
