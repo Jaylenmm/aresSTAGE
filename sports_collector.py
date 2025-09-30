@@ -16,6 +16,7 @@ from app import app, db, Game
 from providers.sportsdata_client import SportsDataIOClient
 from providers.odds_client import OddsClient
 from providers.team_aliases import canonicalize_team_name
+from providers.espn_client import ESPNClient
 from providers.registry import get_enabled_sports, should_seed_from_odds
 
 class SportsDataCollector:
@@ -33,6 +34,7 @@ class SportsDataCollector:
         self.cache = {}
         self.cache_ttl = 15 * 60  # 15 minutes
         self.sdio = SportsDataIOClient()
+        self.espn = ESPNClient()
         self.odds = OddsClient()
         # Lookahead days for schedules (env override)
         try:
@@ -69,6 +71,11 @@ class SportsDataCollector:
     def collect_nfl_games(self):
         """Collect NFL games from SportsDataIO"""
         try:
+            prefer_espn = (os.getenv('PREFER_ESPN_SCHEDULE', 'false').lower() == 'true')
+            if prefer_espn:
+                data = self.espn.fetch_upcoming_games('nfl', days_ahead=self.lookahead_days)
+                if data:
+                    return data
             return self.sdio.fetch_upcoming_games('nfl', days_ahead=self.lookahead_days)
         except Exception:
             return []
@@ -82,6 +89,11 @@ class SportsDataCollector:
 
     def collect_mlb_games(self):
         try:
+            prefer_espn = (os.getenv('PREFER_ESPN_SCHEDULE', 'false').lower() == 'true')
+            if prefer_espn:
+                data = self.espn.fetch_upcoming_games('mlb', days_ahead=self.lookahead_days)
+                if data:
+                    return data
             return self.sdio.fetch_upcoming_games('mlb', days_ahead=self.lookahead_days)
         except Exception:
             return []
