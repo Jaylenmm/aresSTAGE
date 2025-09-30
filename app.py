@@ -158,6 +158,11 @@ class DataScheduler:
 
 USE_THREAD_SCHEDULER = os.getenv('USE_THREAD_SCHEDULER', 'true').lower() == 'true'
 data_scheduler = DataScheduler() if USE_THREAD_SCHEDULER else None
+if data_scheduler and os.getenv('SCHEDULER_START_AT_IMPORT', 'true').lower() == 'true':
+    try:
+        data_scheduler.start()
+    except Exception:
+        pass
 
 def _now_est_naive():
     try:
@@ -1282,6 +1287,40 @@ def admin_seed_from_odds():
             col.save_games_to_db(created)
         return jsonify({'success': True, 'created': len(created)})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/reseed', methods=['POST'])
+def admin_reseed():
+    """Purge current upcoming/live games for enabled sports and reseed via collector (prefers ESPN if configured)."""
+    try:
+        # Prefer ESPN schedules for reseed
+        os.environ['PREFER_ESPN_SCHEDULE'] = 'true'
+        # Determine enabled sports
+        try:
+            from providers.registry import get_enabled_sports
+            sports_enabled = get_enabled_sports()
+        except Exception:
+            sports_enabled = ['nfl','mlb']
+
+        removed = 0
+        with app.app_context():
+            to_delete = Game.query.filter(Game.status.in_(['upcoming','live']), Game.sport.in_(sports_enabled)).all()
+            for g in to_delete:
+                db.session.delete(g)
+                removed += 1
+            db.session.commit()
+
+        # Run full collection (schedules + odds enrichment)
+        from sports_collector import SportsDataCollector
+        collector = SportsDataCollector()
+        games = collector.collect_all_games()
+        try:
+            app.config['LAST_COLLECT_TS'] = datetime.utcnow()
+        except Exception:
+            pass
+        return jsonify({'success': True, 'removed': removed, 'seeded': len(games)})
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
  
