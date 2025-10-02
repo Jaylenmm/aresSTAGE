@@ -456,6 +456,29 @@ def home():
         preferred_order = ['nfl', 'nba', 'mlb', 'nhl', 'cfb', 'soccer', 'golf']
         sports = [s for s in preferred_order if s in distinct_sports] + [s for s in distinct_sports if s not in preferred_order]
 
+        # If no upcoming/live games exist for the selected sport, default to first available sport with games
+        if (not upcoming_games) and sports:
+            try:
+                selected_sport = sports[0]
+                query2 = Game.query.filter(Game.status.in_(['upcoming', 'live']))
+                query2 = query2.filter(Game.sport == selected_sport)
+                all_upcoming = query2.order_by(Game.date.asc()).limit(100).all()
+                live_games = [g for g in all_upcoming if g.status == 'live'][:10]
+                upcoming_games = [g for g in all_upcoming if g.status != 'live']
+                if sort_by == 'odds':
+                    def odds_weight(g):
+                        has = int(any([g.home_moneyline is not None, g.away_moneyline is not None, g.spread is not None, g.total is not None]))
+                        return (-has, g.date)
+                    upcoming_games.sort(key=odds_weight)
+                elif sort_by == 'sport':
+                    upcoming_games.sort(key=lambda g: (g.sport or '', g.date))
+                else:
+                    upcoming_games.sort(key=lambda g: g.date)
+                upcoming_games = upcoming_games[:50]
+                featured_games = get_featured_upcoming(selected_sport, now_est, window_days=7, limit=4)
+            except Exception:
+                pass
+
         # If a sport is selected, prepare featured props and news
         featured_props = get_featured_props(selected_sport, limit=4) if selected_sport else []
         news_articles = get_news(selected_sport, limit=5) if selected_sport else []
